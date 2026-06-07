@@ -1,4 +1,4 @@
-# 🛡️ AgentShield — Real-Time Security Middleware for AI Agents
+# 🛡️ AgentShield : Real-Time Security Middleware for AI Agents
 
 > **Microsoft Build AI 2026 · Theme: Security in the Agentic Future**
 
@@ -335,6 +335,6 @@ This project was developed with assistance from **Claude AI (Anthropic)**. The f
 
 ## 👤 Team
 
-**Anshul Jain** — Solo  
+**Anshul Jain** : Solo  
 IIIT Delhi · Full-stack developer & AI security researcher  
 Microsoft Build AI 2026
