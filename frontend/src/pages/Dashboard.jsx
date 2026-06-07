@@ -28,7 +28,7 @@ function Count({ to, suffix = '' }) {
 }
 
 /* ── KPI card ── */
-function KPI({ value, label, sub, valueColor = '#ffffff', delay = 0 }) {
+function KPI({ value, label, sub, valueColor = '#f5f5f7', delay = 0 }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
@@ -36,20 +36,20 @@ function KPI({ value, label, sub, valueColor = '#ffffff', delay = 0 }) {
       transition={{ delay, duration: 0.4 }}
       className="card p-6"
     >
-      <div style={{ fontSize: 11, color: '#9ca3af', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12, fontWeight: 600 }}>
+      <div style={{ fontSize: 11, color: '#86868b', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12, fontWeight: 500, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
         {label}
       </div>
-      <div className="stat-num" style={{ fontSize: 38, color: valueColor, fontWeight: 700 }}>
+      <div className="stat-num" style={{ fontSize: 38, color: valueColor, fontWeight: 600, fontFamily: '"Outfit", sans-serif' }}>
         {typeof value === 'number' ? <Count to={value} /> : value}
       </div>
-      {sub && <div style={{ fontSize: 11, color: '#71717a', marginTop: 6, fontWeight: 500 }}>{sub}</div>}
+      {sub && <div style={{ fontSize: 11, color: '#86868b', marginTop: 6, fontWeight: 300, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>{sub}</div>}
     </motion.div>
   )
 }
 
 /* ── Threat feed row ── */
 function FeedRow({ ev, i }) {
-  const colors = { block: '#ff453a', warn: '#ff9f0a', allow: '#30d158' }
+  const colors = { block: '#ff3b30', warn: '#ff9500', allow: '#34c759' }
   const color  = colors[ev.action] || '#86868b'
   const ts = ev.timestamp
     ? new Date(ev.timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
@@ -61,7 +61,7 @@ function FeedRow({ ev, i }) {
       animate={{ opacity: 1, x: 0 }}
       transition={{ delay: i * 0.02, duration: 0.25 }}
       className="threat-row"
-      style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}
+      style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}
     >
       {/* Status dot with pulsing effect */}
       <div style={{
@@ -70,22 +70,22 @@ function FeedRow({ ev, i }) {
       }} />
 
       {/* Badge */}
-      <span className={`badge badge-${ev.action}`} style={{ flexShrink: 0 }}>
+      <span className={`badge badge-${ev.action}`} style={{ flexShrink: 0, fontFamily: '"Plus Jakarta Sans", sans-serif', fontWeight: 500 }}>
         {ev.action}
       </span>
 
       {/* Preview */}
-      <span style={{ fontSize: 12, color: '#f5f5f7', fontFamily: '"IBM Plex Mono"', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      <span style={{ fontSize: 12, color: '#f5f5f7', fontFamily: '"Plus Jakarta Sans", sans-serif', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 400 }}>
         {ev.input_preview || ev.threat_category || '—'}
       </span>
 
       {/* Score */}
-      <span style={{ fontSize: 12, fontFamily: '"IBM Plex Mono"', color, flexShrink: 0, fontWeight: 600 }}>
+      <span style={{ fontSize: 12, fontFamily: 'monospace', color, flexShrink: 0, fontWeight: 600 }}>
         {ev.trust_score}
       </span>
 
       {/* Time */}
-      <span style={{ fontSize: 11, color: '#86868b', fontFamily: '"IBM Plex Mono"', flexShrink: 0 }}>
+      <span style={{ fontSize: 11, color: '#86868b', fontFamily: '"Plus Jakarta Sans", sans-serif', flexShrink: 0, fontWeight: 300 }}>
         {ts}
       </span>
     </motion.div>
@@ -141,18 +141,19 @@ export default function Dashboard() {
         wsConnected={wsConn}
       />
 
-      <div className="flex-1 overflow-y-auto p-8 space-y-6">
+      <div className="flex-1 overflow-y-auto p-8 pb-16">
+        <div className="max-w-[1200px] mx-auto space-y-8">
 
         {/* ── KPIs ── */}
         <div className="grid grid-cols-4 gap-4">
-          <KPI value={blocked}  label="Threats Blocked" valueColor="#ff453a" delay={0}   />
-          <KPI value={warned}   label="Warnings"        valueColor="#ff9f0a" delay={0.05} />
-          <KPI value={allowed}  label="Safe Requests"   valueColor="#30d158" delay={0.10} />
+          <KPI value={blocked}  label="Threats Blocked" valueColor="#ff3b30" delay={0}   />
+          <KPI value={warned}   label="Warnings"        valueColor="#ff9500" delay={0.05} />
+          <KPI value={allowed}  label="Safe Requests"   valueColor="#34c759" delay={0.10} />
           <KPI
             value={`${avg}`}
             label="Avg Trust Score"
             sub="/ 100"
-            valueColor={avg > 70 ? '#30d158' : avg > 40 ? '#ff9f0a' : '#ff453a'}
+            valueColor={avg > 70 ? '#34c759' : avg > 40 ? '#ff9500' : '#ff3b30'}
             delay={0.15}
           />
         </div>
@@ -165,7 +166,7 @@ export default function Dashboard() {
             value={`${blockRate}%`}
             label="Block Rate"
             sub={status?.llm_provider === 'github_models' ? 'LLM: GitHub AI' : 'LLM: pattern-only'}
-            valueColor={blockRate > 20 ? '#ff453a' : '#f5f5f7'}
+            valueColor={blockRate > 20 ? '#ff3b30' : '#f5f5f7'}
             delay={0.24}
           />
         </div>
@@ -178,8 +179,8 @@ export default function Dashboard() {
             initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
             className="col-span-2 card p-5"
           >
-            <div className="section-header" style={{ marginBottom: 16, paddingBottom: 14 }}>
-              <span style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Outfit", sans-serif', fontSize: 13, fontWeight: 600, color: '#ffffff', letterSpacing: '-0.01em' }}>
+            <div className="section-header" style={{ marginBottom: 16, paddingBottom: 14, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+              <span style={{ fontFamily: '"Outfit", "-apple-system", sans-serif', fontSize: 13, fontWeight: 600, color: '#f5f5f7', letterSpacing: '-0.01em' }}>
                 7-Day Trend
               </span>
               <TrendingUp size={14} color="#0071e3" />
@@ -188,29 +189,30 @@ export default function Dashboard() {
               <AreaChart data={daily}>
                 <defs>
                   <linearGradient id="gBlock" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%"   stopColor="#ff453a" stopOpacity={0.2} />
-                    <stop offset="100%" stopColor="#ff453a" stopOpacity={0} />
+                    <stop offset="0%"   stopColor="#ff3b30" stopOpacity={0.1} />
+                    <stop offset="100%" stopColor="#ff3b30" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" />
-                <XAxis dataKey="date" stroke="#86868b" fontSize={10} fontFamily='"IBM Plex Mono"' />
-                <YAxis stroke="#86868b" fontSize={10} fontFamily='"IBM Plex Mono"' />
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
+                <XAxis dataKey="date" stroke="#86868b" fontSize={10} fontFamily='"Plus Jakarta Sans"' axisLine={false} tickLine={false} />
+                <YAxis stroke="#86868b" fontSize={10} fontFamily='"Plus Jakarta Sans"' axisLine={false} tickLine={false} />
                 <Tooltip
                   contentStyle={{
-                    background: 'rgba(10, 10, 12, 0.8)',
+                    background: 'rgba(15, 15, 15, 0.85)',
                     backdropFilter: 'blur(16px)',
-                    border: '1px solid rgba(255,255,255,0.08)',
-                    borderRadius: '10px',
-                    fontFamily: '"IBM Plex Mono", monospace',
+                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                    borderRadius: '12px',
+                    fontFamily: '"Plus Jakarta Sans", sans-serif',
                     fontSize: '11px',
-                    color: '#ffffff'
+                    color: '#ffffff',
+                    boxShadow: '0 8px 30px rgba(0, 0, 0, 0.5)'
                   }}
                 />
-                <Area type="monotone" dataKey="blocked" stroke="#ff453a" fill="url(#gBlock)" strokeWidth={2} name="Blocked" />
-                <Area type="monotone" dataKey="warned"  stroke="#ff9f0a" fill="none"          strokeWidth={1.5} name="Warned" />
+                <Area type="monotone" dataKey="blocked" stroke="#ff3b30" fill="url(#gBlock)" strokeWidth={2} name="Blocked" />
+                <Area type="monotone" dataKey="warned"  stroke="#ff9500" fill="none"          strokeWidth={1.5} name="Warned" />
               </AreaChart>
             </ResponsiveContainer>
-            <div style={{ fontSize: 11, color: '#86868b', marginTop: 12, lineHeight: 1.5, borderTop: '1px solid rgba(255,255,255,0.04)', paddingTop: 10 }}>
+            <div style={{ fontSize: 11, color: '#86868b', marginTop: 12, lineHeight: 1.5, borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 10, fontFamily: '"Plus Jakarta Sans", sans-serif', fontWeight: 300 }}>
               Aggregated weekly timeline comparing blocked threat vectors against warning notifications. Use this to identify multi-day attack spikes.
             </div>
           </motion.div>
@@ -220,25 +222,26 @@ export default function Dashboard() {
             initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}
             className="col-span-3 card p-5"
           >
-            <div className="section-header" style={{ marginBottom: 16, paddingBottom: 14 }}>
+            <div className="section-header" style={{ marginBottom: 16, paddingBottom: 14, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
               <div className="flex items-center gap-2">
                 <Activity size={14} color="#0071e3" />
-                <span style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Outfit", sans-serif', fontSize: 13, fontWeight: 600, color: '#ffffff', letterSpacing: '-0.01em' }}>
+                <span style={{ fontFamily: '"Outfit", "-apple-system", sans-serif', fontSize: 13, fontWeight: 600, color: '#f5f5f7', letterSpacing: '-0.01em' }}>
                   Live Threat Feed
                 </span>
                 <span className="live-dot" style={{ width: 5, height: 5 }} />
               </div>
-              <span style={{ fontSize: 11, fontFamily: '"IBM Plex Mono"', color: '#86868b', fontWeight: 500 }}>
+              <span style={{ fontSize: 11, fontFamily: '"Plus Jakarta Sans", sans-serif', color: '#86868b', fontWeight: 400 }}>
                 {feed.length} events
               </span>
             </div>
 
             {/* Column headers */}
-            <div className="flex items-center gap-3 pb-2.5 mb-1.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+            <div className="flex items-center gap-3 pb-2.5 mb-1.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
               {['', 'Action', 'Input preview', 'Score', 'Time'].map((h, i) => (
                 <span key={i} style={{
                   fontSize: 10, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#86868b',
-                  fontWeight: 600,
+                  fontWeight: 500,
+                  fontFamily: '"Plus Jakarta Sans", sans-serif',
                   flex: i === 2 ? 1 : 'none',
                   width: i === 0 ? 6 : i === 1 ? 56 : i === 3 ? 36 : i === 4 ? 64 : 'auto',
                 }}>
@@ -254,15 +257,16 @@ export default function Dashboard() {
                 ) : (
                   <div className="flex flex-col items-center justify-center py-16" style={{ color: '#86868b' }}>
                     <Shield size={28} style={{ marginBottom: 12, opacity: 0.3 }} />
-                    <p style={{ fontSize: 12, fontFamily: '"IBM Plex Mono"' }}>No events yet — run the Simulator</p>
+                    <p style={{ fontSize: 12, fontFamily: '"Plus Jakarta Sans", sans-serif', fontWeight: 300 }}>No events yet — run the Simulator</p>
                   </div>
                 )}
               </AnimatePresence>
             </div>
-            <div style={{ fontSize: 11, color: '#86868b', marginTop: 12, lineHeight: 1.5, borderTop: '1px solid rgba(255,255,255,0.04)', paddingTop: 10 }}>
+            <div style={{ fontSize: 11, color: '#86868b', marginTop: 12, lineHeight: 1.5, borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 10, fontFamily: '"Plus Jakarta Sans", sans-serif', fontWeight: 300 }}>
               Real-time stream of incoming agent inputs and outgoing payloads intercepted by the active layers. Pulsing indicators denote real-time mitigation actions.
             </div>
           </motion.div>
+        </div>
         </div>
 
       </div>

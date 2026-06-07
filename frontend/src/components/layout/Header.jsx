@@ -6,21 +6,21 @@ export default function Header({ title, subtitle, wsConnected, right }) {
     <div
       className="flex items-center justify-between px-8 py-5"
       style={{
-        background: 'rgba(10, 10, 10, 0.25)',
-        backdropFilter: 'blur(12px)',
-        WebkitBackdropFilter: 'blur(12px)',
-        borderBottom: '1px solid rgba(255,255,255,0.07)',
+        background: 'rgba(10, 10, 10, 0.65)',
+        backdropFilter: 'blur(20px)',
+        WebkitBackdropFilter: 'blur(20px)',
+        borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
       }}
     >
       <div>
         <h1 style={{
-          fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Outfit", sans-serif', fontWeight: 600, fontSize: 21,
-          color: '#ffffff', letterSpacing: '-0.02em', lineHeight: 1.1,
+          fontFamily: '"Outfit", "-apple-system", sans-serif', fontWeight: 600, fontSize: 21,
+          color: '#f5f5f7', letterSpacing: '-0.02em', lineHeight: 1.1,
         }}>
           {title}
         </h1>
         {subtitle && (
-          <p style={{ fontSize: 12, color: '#9ca3af', marginTop: 5, letterSpacing: '-0.01em' }}>
+          <p style={{ fontSize: 12, color: '#86868b', marginTop: 5, letterSpacing: '-0.01em', fontFamily: '"Plus Jakarta Sans", sans-serif', fontWeight: 300 }}>
             {subtitle}
           </p>
         )}
@@ -30,19 +30,19 @@ export default function Header({ title, subtitle, wsConnected, right }) {
         {right}
         {wsConnected !== undefined && (
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg"
-            style={{
-              background: wsConnected ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)',
-              border: `1px solid ${wsConnected ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.25)'}`,
-              boxShadow: wsConnected ? '0 0 10px rgba(16,185,129,0.1)' : '0 0 10px rgba(239,68,68,0.1)',
-            }}>
+             style={{
+               background: wsConnected ? 'rgba(52, 199, 89, 0.08)' : 'rgba(255, 59, 48, 0.08)',
+               border: `1px solid ${wsConnected ? 'rgba(52, 199, 89, 0.15)' : 'rgba(255, 59, 48, 0.15)'}`,
+               boxShadow: wsConnected ? '0 2px 8px rgba(52, 199, 89, 0.05)' : '0 2px 8px rgba(255, 59, 48, 0.05)',
+             }}>
             {wsConnected
-              ? <Wifi size={11} color="#34d399" />
-              : <WifiOff size={11} color="#ef4444" />}
+              ? <Wifi size={11} color="#34c759" />
+              : <WifiOff size={11} color="#ff3b30" />}
             <span style={{
               fontSize: 10,
-              fontFamily: '"IBM Plex Mono"',
+              fontFamily: '"Plus Jakarta Sans", sans-serif',
               fontWeight: 600,
-              color: wsConnected ? '#34d399' : '#ef4444',
+              color: wsConnected ? '#34c759' : '#ff3b30',
               letterSpacing: '0.06em'
             }}>
               {wsConnected ? 'LIVE' : 'DISCONNECTED'}
