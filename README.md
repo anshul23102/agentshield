@@ -1,8 +1,10 @@
-# 🛡️ AgentShield : Real-Time Security Middleware for AI Agents
+# AgentShield
 
-> **Microsoft Build AI 2026 · Theme: Security in the Agentic Future**
+Microsoft Build AI 2026
 
-AgentShield is a production-ready, **bidirectional** security middleware that protects AI agent pipelines from prompt injection, jailbreaks, data exfiltration, identity spoofing, and adversarial manipulation — in real time, with a single line of code.
+Theme: Security in the Agentic Future
+
+AgentShield is a production-ready, bidirectional security middleware that protects AI agent pipelines from prompt injection, jailbreaks, data exfiltration, identity spoofing, and adversarial manipulation in real time, with a single line of code.
 
 It checks incoming prompts before they reach an agent, scans outgoing responses before they leave the system, and gives teams a live dashboard for understanding risk, blocks, warnings, safe traffic, and trust posture.
 
@@ -20,23 +22,19 @@ GitHub repository: https://github.com/anshul23102/agentshield
 
 Demo video: add YouTube link here
 
----
+## Microsoft AI Stack
 
-## 🔵 Microsoft AI Stack
-
-AgentShield uses **GitHub Models** (powered by **Azure AI Foundry**) for optional LLM-based threat analysis in Layer 3 of the detection pipeline. GitHub Models provides free access to **GPT-4o-mini** with 5,000 requests per day — completely within the free tier.
+AgentShield uses GitHub Models through Azure AI Foundry for optional model-based threat analysis in Layer 3 of the detection pipeline. GitHub Models provides access to GPT-4o-mini within the free tier.
 
 When a `GITHUB_TOKEN` is configured, AgentShield performs deeper semantic analysis on suspicious prompts. Without the token, the system still catches **90%+ of attacks** using pattern matching alone.
 
-| Component | Details |
-|-----------|---------|
-| **Provider** | Microsoft Azure AI Foundry |
-| **Model** | GPT-4o-mini |
-| **Tier** | Free (5,000 requests/day) |
-| **Integration** | GitHub Models API |
-| **Purpose** | Layer 3: LLM Deep Analysis |
+Component details:
 
----
+- Provider: Microsoft Azure AI Foundry
+- Model: GPT-4o-mini
+- Tier: Free tier
+- Integration: GitHub Models API
+- Purpose: Layer 3 semantic threat analysis
 
 ## Problem
 
@@ -245,12 +243,13 @@ Output directory: dist
 Environment variable: VITE_API_URL=https://agentshield-api-658e.onrender.com
 ```
 
-## 🔒 Data Privacy & Security
+## Data Privacy and Security
 
 **What Data Is Used:**
 - Synthetic demo prompts (no real user data required)
 - Request metadata (timestamp, IP hash, decision verdict)
 - Event logs (block/warn/allow verdicts, pattern matches)
+- Secret-looking values shown in demos are synthetic fixtures only.
 
 **How It Is Stored:**
 - Local SQLite database in `backend/data/`
@@ -266,13 +265,13 @@ Environment variable: VITE_API_URL=https://agentshield-api-658e.onrender.com
 - All data isolated locally or in private database
 - Request size limits, session retention, bounded concurrency
 
-**Compliance:**
-- GDPR-aligned (no personal data collection by design)
-- Privacy by design (minimal data retention)
-- User consent not required (synthetic demo data only)
-- Hackathon privacy rules satisfied
+**Compliance Position:**
+- No personal data is required for the demo.
+- Synthetic demo prompts are used for judging and testing.
+- No confidential employer data or proprietary third-party data is required.
+- Public repository secrets are excluded through `.gitignore` and environment variable usage.
 
-## 📚 Open Source Credits
+## Open Source Credits
 
 This project uses the following open-source libraries:
 
@@ -299,42 +298,43 @@ This project uses the following open-source libraries:
 - [Vercel](https://vercel.com) (proprietary)
 - [Render](https://render.com) (proprietary)
 
----
+## Development Disclosure
 
-## 🤖 Development Disclosure
+AI-powered development tools were used during the build process. Assistance was used for code suggestions, debugging, refactoring, documentation drafting, and deployment troubleshooting.
 
-This project was developed with assistance from **Claude AI (Anthropic)**. The following components received AI assistance:
+Tools used:
 
-**Architecture & Design:**
-- Threat taxonomy and attack signature database (54 input + 23 output patterns)
-- 4-layer detection pipeline architecture
-- Trust scoring algorithm design
-- Session-aware behavioral analysis
+- GitHub Copilot for coding suggestions and editing support.
+- OpenAI Codex for implementation support, debugging, documentation, and deployment guidance.
 
-**Implementation:**
-- Backend: FastAPI routes, WebSocket real-time streaming, SQLite schema
-- Frontend: React pages, Framer Motion animations, Recharts visualizations
-- Detection patterns: Compiled regex signatures for all attack categories
-- SDK: Python client wrapper for easy integration
-- Deployment: Docker configs, Render/Vercel setup, runtime configurations
+Areas where AI assistance was used:
 
-**Testing & Debugging:**
-- Pydantic version resolution
-- Deployment troubleshooting
-- Performance optimization
+- Architecture review for the bidirectional guard pipeline.
+- Backend implementation support for FastAPI routes, WebSocket streaming, and SQLite event storage.
+- Frontend implementation support for React pages, dashboard visualizations, and interaction refinements.
+- Detection pattern review for input attacks and output leak signatures.
+- README drafting and submission documentation.
+- Render and Vercel deployment troubleshooting.
 
-**Documentation:**
-- README, API documentation, SDK examples
+Human judgment and engineering decisions were applied throughout the project, including product scope, threat model choices, UI direction, deployment decisions, testing, and final review.
 
-**Code Quality:**
-- All code has been reviewed for correctness, security, and performance
-- All AI-assisted code is original to this project
-- No external code was copied without attribution
+All generated or assisted code was reviewed, edited, and integrated specifically for this project. No external project code was copied without attribution.
 
----
+## Team
 
+<<<<<<< HEAD
 ## 👤 Team : **BloodWyrm**
 
 **Anshul Jain** : Solo  
 IIIT Delhi · Full-stack developer & AI security researcher  
+=======
+Anshul Jain
+
+Solo participant
+
+IIIT Delhi
+
+Full-stack developer and AI security researcher
+
+>>>>>>> 749c495 (Add public backend status routes)
 Microsoft Build AI 2026

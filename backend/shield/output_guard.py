@@ -68,7 +68,7 @@ LEAK_PATTERNS: list[LeakPattern] = [
         id="SEC-OPENAI",
         pattern=r"\bsk-[A-Za-z0-9]{20,}\b",
         leak_type=LeakType.SECRET, severity=LeakSeverity.CRITICAL,
-        description="OpenAI / Anthropic-style API Key",
+        description="Provider API Key",
         redact_with="[API_KEY_REDACTED]",
     ),
     LeakPattern(
