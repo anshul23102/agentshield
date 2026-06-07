@@ -100,30 +100,32 @@ export default function Simulator() {
                     <button
                       key={d.id}
                       onClick={() => { setPrompt(d.prompt); setResult(null); taRef.current?.focus() }}
-                      className="flex items-center gap-2 px-3.5 py-2 rounded-full"
+                      className="flex items-center gap-2.5 px-4 py-2.5 rounded-full"
                       style={{
-                        background: 'transparent',
-                        border: '1px solid rgba(255, 255, 255, 0.08)',
-                        fontSize: 11,
-                        color: '#86868b',
-                        transition: 'all 0.25s cubic-bezier(0.25, 0, 0, 1)',
-                        backdropFilter: 'blur(8px)',
+                        background: 'rgba(255, 255, 255, 0.03)',
+                        border: '1px solid rgba(255, 255, 255, 0.12)',
+                        fontSize: 11.5,
+                        color: 'var(--t1)',
+                        transition: 'all 0.2s cubic-bezier(0.25, 0, 0, 1)',
+                        backdropFilter: 'blur(12px)',
                         fontFamily: '"Plus Jakarta Sans", sans-serif',
-                        fontWeight: 400
+                        fontWeight: 500
                       }}
                       onMouseEnter={e => {
-                        e.currentTarget.style.borderColor = 'rgba(0, 113, 227, 0.4)'
-                        e.currentTarget.style.color = '#0071e3'
-                        e.currentTarget.style.background = 'rgba(0, 113, 227, 0.02)'
+                        e.currentTarget.style.borderColor = '#0071e3'
+                        e.currentTarget.style.color = '#ffffff'
+                        e.currentTarget.style.background = 'rgba(0, 113, 227, 0.15)'
+                        e.currentTarget.style.boxShadow = '0 0 12px rgba(0, 113, 227, 0.3)'
                       }}
                       onMouseLeave={e => {
-                        e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.08)'
-                        e.currentTarget.style.color = '#86868b'
-                        e.currentTarget.style.background = 'transparent'
+                        e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.12)'
+                        e.currentTarget.style.color = 'var(--t1)'
+                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)'
+                        e.currentTarget.style.boxShadow = 'none'
                       }}
                     >
-                      <span className={`badge badge-${d.level}`} style={{ fontSize: 9, padding: '1px 5px' }}>{d.level}</span>
-                      <span style={{ fontWeight: 400 }}>{d.name}</span>
+                      <span className={`badge badge-${d.level}`} style={{ fontSize: 9, padding: '1px 5.5px' }}>{d.level}</span>
+                      <span>{d.name}</span>
                     </button>
                   ))}
                 </div>

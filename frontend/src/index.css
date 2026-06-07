@@ -31,15 +31,15 @@
 /* ── Design Tokens ────────────────────────────────────────────────────────── */
 :root {
   --bg:       #050505;
-  --surface:  rgba(15, 15, 15, 0.7);
-  --card:     rgba(20, 20, 20, 0.65);
-  --card-h:   rgba(25, 25, 25, 0.8);
-  --b1:       rgba(255, 255, 255, 0.08);
-  --b2:       rgba(255, 255, 255, 0.15);
-  --b3:       rgba(255, 255, 255, 0.25);
-  --t1:       #F5F5F7;
-  --t2:       #86868B;
-  --t3:       #6E6E73;
+  --surface:  rgba(15, 15, 15, 0.75);
+  --card:     rgba(20, 20, 20, 0.7);
+  --card-h:   rgba(30, 30, 30, 0.85);
+  --b1:       rgba(255, 255, 255, 0.12);
+  --b2:       rgba(255, 255, 255, 0.22);
+  --b3:       rgba(255, 255, 255, 0.35);
+  --t1:       #FFFFFF;
+  --t2:       #D1D1D6;
+  --t3:       #98989D;
   --accent:   #0071e3;
   --accent-rgb: 0, 113, 227;
   --accent-gradient: linear-gradient(135deg, #0071e3 0%, #a1d0ff 100%);
@@ -301,3 +301,27 @@
   from { transform: translateY(-100%); }
   to   { transform: translateY(100vh); }
 }
+
+/* ── Accessibility & Legibility Enhancements ── */
+body {
+  font-weight: 450 !important;
+}
+
+[style*="font-weight: 300"],
+[style*="font-weight:300"] {
+  font-weight: 400 !important;
+}
+
+[style*="color: #86868b"],
+[style*="color: #86868B"],
+[style*="color: rgb(134, 134, 139)"],
+[style*="color: rgba(134, 134, 139"] {
+  color: var(--t2) !important;
+}
+
+[style*="color: #f5f5f7"],
+[style*="color: #F5F5F7"],
+[style*="color: rgb(245, 245, 247)"] {
+  color: var(--t1) !important;
+}
+
