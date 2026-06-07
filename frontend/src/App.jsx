@@ -12,6 +12,8 @@ const OutputGuard = lazy(() => import('./pages/OutputGuard'))
 const Intelligence= lazy(() => import('./pages/Intelligence'))
 const Analytics   = lazy(() => import('./pages/Analytics'))
 const Docs        = lazy(() => import('./pages/Docs'))
+const Pipeline    = lazy(() => import('./pages/Pipeline'))
+
 
 function Loader() {
   return (
@@ -57,6 +59,8 @@ export default function App() {
                     <Route path="/intelligence" element={<Intelligence />} />
                     <Route path="/analytics"    element={<Analytics />} />
                     <Route path="/docs"         element={<Docs />} />
+                    <Route path="/pipeline"     element={<Pipeline />} />
+
                   </Routes>
                 </Suspense>
               </main>

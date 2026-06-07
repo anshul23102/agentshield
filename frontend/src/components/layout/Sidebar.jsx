@@ -2,11 +2,12 @@ import { NavLink } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   Shield, LayoutDashboard, Zap, ShieldCheck,
-  Brain, BarChart3, BookOpen, Github
+  Brain, BarChart3, BookOpen, Github, Network
 } from 'lucide-react'
 
 const NAV = [
   { to: '/dashboard',    icon: LayoutDashboard, label: 'Dashboard'    },
+  { to: '/pipeline',     icon: Network,         label: 'Guard Graph'  },
   { to: '/simulator',    icon: Zap,             label: 'Simulator'    },
   { to: '/output-guard', icon: ShieldCheck,     label: 'Output Guard' },
   { to: '/intelligence', icon: Brain,           label: 'Intelligence' },
