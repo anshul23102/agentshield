@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Environment — NEVER commit
+backend/.env
+.env
+.env.*
+!.env.example
+
+# Python venv
+venv/
+env/
+.venv/
+
+# Build outputs
+frontend/dist/
+
+# DB files
+*.db
+*.sqlite
+*.sqlite3
+backend/data/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Logs
+*.log
+uvicorn.log
