@@ -14,7 +14,7 @@ const TYPE_ICONS = {
   'System Prompt Leak':             FileWarning,
 }
 
-const SEV = { critical: '#FF3B30', high: '#FF9F0A', medium: '#888', low: '#444' }
+const SEV = { critical: '#ff453a', high: '#ffb340', medium: '#a1a1aa', low: '#71717a' }
 
 export default function OutputGuard() {
   const [text,    setText]    = useState('')
@@ -44,10 +44,10 @@ export default function OutputGuard() {
     <div className="h-full flex flex-col overflow-hidden">
       <Header
         title="Output Guard"
-        subtitle="Bidirectional — scans what your agent sends back"
+        subtitle="Bidirectional protection — scans what your agent sends back"
         right={stats && (
-          <div style={{ fontSize: 11, color: '#555', fontFamily: '"IBM Plex Mono"' }}>
-            {stats.total} leak signatures
+          <div style={{ fontSize: 11, color: '#86868b', fontFamily: '"IBM Plex Mono"', fontWeight: 600 }}>
+            {stats.total} leak signatures loaded
           </div>
         )}
       />
@@ -55,59 +55,67 @@ export default function OutputGuard() {
       <div className="flex-1 overflow-y-auto p-8 space-y-6">
 
         {/* Flow diagram */}
-        <div className="card-flat p-4 flex items-center gap-3 flex-wrap" style={{ gap: 12 }}>
+        <div className="card-flat p-5 flex items-center gap-3 flex-wrap" style={{ gap: 12 }}>
           {[
-            { label: 'User Input', color: '#555' },
-            { label: 'Input Guard', color: '#0A84FF' },
-            { label: 'AI Agent', color: '#888' },
-            { label: 'Output Guard', color: '#30D158', active: true },
-            { label: 'Safe Response', color: '#555' },
+            { label: 'User Input', color: '#86868b' },
+            { label: 'Input Guard', color: '#0071e3', activeBorder: 'rgba(0, 113, 227, 0.4)', shadow: '0 0 10px rgba(0, 113, 227, 0.15)' },
+            { label: 'AI Agent', color: '#86868b' },
+            { label: 'Output Guard', color: '#30d158', active: true, activeBorder: 'rgba(48, 209, 88, 0.4)', shadow: '0 0 12px rgba(48, 209, 88, 0.2)' },
+            { label: 'Safe Response', color: '#ffffff', activeBorder: 'rgba(255,255,255,0.1)' },
           ].map((step, i, arr) => (
             <div key={i} className="flex items-center gap-2">
-              <div className="px-3 py-1.5 rounded-lg" style={{
-                background: step.active ? 'rgba(48,209,88,0.1)' : 'rgba(255,255,255,0.04)',
-                border: `1px solid ${step.active ? 'rgba(48,209,88,0.25)' : 'rgba(255,255,255,0.08)'}`,
-                fontSize: 12, color: step.color, fontWeight: step.active ? 600 : 400,
+              <div className="px-3.5 py-2 rounded-lg" style={{
+                background: step.active ? 'rgba(48,209,88,0.1)' : 'rgba(255,255,255,0.02)',
+                border: `1px solid ${step.activeBorder || 'rgba(255,255,255,0.06)'}`,
+                boxShadow: step.shadow || 'none',
+                fontSize: 12, color: step.color, fontWeight: step.active || i === 4 ? 600 : 500,
               }}>
                 {step.label}
               </div>
-              {i < arr.length - 1 && <ArrowRight size={12} color="#333" />}
+              {i < arr.length - 1 && <ArrowRight size={12} color="#86868b" />}
             </div>
           ))}
-          <p style={{ fontSize: 11, color: '#555', marginLeft: 'auto', maxWidth: 280, textAlign: 'right', lineHeight: 1.5 }}>
-            Most defenses only guard what goes <em>in</em>. AgentShield also
-            guards what comes <em>out</em> — blocking data exfiltration.
+          <p style={{ fontSize: 11, color: '#86868b', marginLeft: 'auto', maxWidth: 280, textAlign: 'right', lineHeight: 1.6, fontWeight: 500 }}>
+            Most defenses only guard what goes <em style={{ color: '#0071e3', fontStyle: 'normal', fontWeight: 600 }}>in</em>. AgentShield also
+            guards what comes <em style={{ color: '#30d158', fontStyle: 'normal', fontWeight: 600 }}>out</em> — blocking data exfiltration.
           </p>
+          <div style={{ fontSize: 11, color: '#86868b', width: '100%', marginTop: 12, lineHeight: 1.5, borderTop: '1px solid rgba(255,255,255,0.04)', paddingTop: 10 }}>
+            Verifies agent outputs before delivery. Prevents data exfiltration, system prompt leakage, and exposed API credentials.
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-6">
 
           {/* Demo scenarios */}
           <div className="space-y-3">
-            <div style={{ fontSize: 10, color: '#444', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12 }}>
-              Simulated Agent Responses
+            <div style={{ fontSize: 10, color: '#86868b', letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 12, fontWeight: 600 }}>
+              Simulated Agent Outputs
             </div>
+            <p style={{ fontSize: 12.5, color: '#86868b', lineHeight: 1.6, marginBottom: 12 }}>
+              Select a payload simulation to test how Output Guard isolates vulnerabilities:
+            </p>
             {demos.map(d => {
               const Icon = TYPE_ICONS[d.type] || KeyRound
               const safe = d.type === 'None'
               return (
                 <motion.button
                   key={d.id}
-                  whileHover={{ x: 3 }}
+                  whileHover={{ x: 4 }}
                   onClick={() => { setText(d.text); setResult(null); taRef.current?.focus() }}
-                  className="w-full text-left card-flat p-4 flex items-center gap-3"
+                  className="w-full text-left card-flat p-4 flex items-center gap-3.5"
                 >
                   <div style={{
-                    width: 32, height: 32, borderRadius: 8, flexShrink: 0,
-                    background: safe ? 'rgba(48,209,88,0.08)' : 'rgba(255,59,48,0.08)',
-                    border: `1px solid ${safe ? 'rgba(48,209,88,0.15)' : 'rgba(255,59,48,0.15)'}`,
+                    width: 34, height: 34, borderRadius: 8, flexShrink: 0,
+                    background: safe ? 'rgba(48,209,88,0.08)' : 'rgba(255,69,58,0.08)',
+                    border: `1px solid ${safe ? 'rgba(48,209,88,0.2)' : 'rgba(255,69,58,0.2)'}`,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    boxShadow: safe ? '0 0 10px rgba(48,209,88,0.05)' : '0 0 10px rgba(255,69,58,0.05)'
                   }}>
-                    <Icon size={14} color={safe ? '#30D158' : '#FF3B30'} />
+                    <Icon size={14} color={safe ? '#30d158' : '#ff453a'} />
                   </div>
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 13, color: '#888', fontWeight: 500 }}>{d.name}</div>
-                    <div style={{ fontSize: 11, color: '#444', fontFamily: '"IBM Plex Mono"', marginTop: 2 }}>{d.type}</div>
+                    <div style={{ fontSize: 13, color: '#ffffff', fontWeight: 600 }}>{d.name}</div>
+                    <div style={{ fontSize: 11, color: '#86868b', fontFamily: '"IBM Plex Mono"', marginTop: 3, fontWeight: 500 }}>{d.type.toUpperCase()}</div>
                   </div>
                 </motion.button>
               )
@@ -117,9 +125,9 @@ export default function OutputGuard() {
           {/* Input + result */}
           <div className="space-y-4">
             <div>
-              <div className="flex items-center justify-between mb-2">
-                <span style={{ fontSize: 10, color: '#444', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Agent Output to Scan</span>
-                <span style={{ fontSize: 10, fontFamily: '"IBM Plex Mono"', color: '#333' }}>{text.length} chars</span>
+              <div className="flex items-center justify-between mb-2.5">
+                <span style={{ fontSize: 10, color: '#86868b', letterSpacing: '0.05em', textTransform: 'uppercase', fontWeight: 600 }}>Response Payload to Scan</span>
+                <span style={{ fontSize: 10, fontFamily: '"IBM Plex Mono"', color: '#86868b', fontWeight: 500 }}>{text.length} chars</span>
               </div>
               <textarea
                 ref={taRef}
@@ -128,84 +136,96 @@ export default function OutputGuard() {
                 onKeyDown={e => { if (e.ctrlKey && e.key === 'Enter') run() }}
                 placeholder={"Paste an agent response here…\n\nTry: 'Here is the key: AKIAIOSFODNN7EXAMPLE'"}
                 className="input"
-                style={{ minHeight: 160, fontSize: 12 }}
+                style={{ minHeight: 180, fontSize: 13, lineHeight: 1.6 }}
               />
             </div>
 
             <button onClick={run} disabled={loading || !text.trim()} className="btn btn-safe w-full">
               {loading
-                ? <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Scanning…</>
-                : <><ShieldCheck size={14} /> Scan for Data Leaks</>}
+                ? <><Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} /> Scanning payload…</>
+                : <><ShieldCheck size={15} /> Scan agent output</>}
             </button>
 
             <AnimatePresence>
               {result && (
-                <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-3">
+                <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-4">
 
                   {/* Verdict */}
-                  <div className="card p-4 flex items-center justify-between"
-                    style={{ borderColor: result.is_safe ? 'rgba(48,209,88,0.2)' : 'rgba(255,59,48,0.2)' }}>
-                    <div>
-                      <div style={{ fontFamily: '"Space Grotesk"', fontSize: 18, fontWeight: 700, color: result.is_safe ? '#30D158' : '#FF3B30', letterSpacing: '-0.03em' }}>
-                        {result.is_safe ? 'Output Clean' : `${result.leaks_found.length} Leak${result.leaks_found.length > 1 ? 's' : ''} Redacted`}
+                  <div>
+                    <div className="card p-5 flex items-center justify-between"
+                      style={{ borderColor: result.is_safe ? 'rgba(48,209,88,0.25)' : 'rgba(255,69,58,0.25)', background: result.is_safe ? 'rgba(48,209,88,0.03)' : 'rgba(255,69,58,0.03)' }}>
+                      <div>
+                        <div style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Outfit", sans-serif', fontSize: 20, fontWeight: 600, color: result.is_safe ? '#30d158' : '#ff453a', letterSpacing: '-0.02em' }}>
+                          {result.is_safe ? 'PAYLOAD CLEAN' : `${result.leaks_found.length} DATA LEAKS REDACTED`}
+                        </div>
+                        <div style={{ fontSize: 12, color: '#f5f5f7', fontFamily: '"IBM Plex Mono"', marginTop: 6, lineHeight: 1.5, fontWeight: 500 }}>
+                          {result.reasoning}
+                        </div>
                       </div>
-                      <div style={{ fontSize: 11, color: '#555', fontFamily: '"IBM Plex Mono"', marginTop: 4, lineHeight: 1.5 }}>
-                        {result.reasoning}
+                      <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: 16 }}>
+                        <div style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Outfit", sans-serif', fontWeight: 600, fontSize: 30, color: result.risk_score > 70 ? '#30d158' : result.risk_score > 40 ? '#ff9f0a' : '#ff453a', letterSpacing: '-0.04em', filter: `drop-shadow(0 0 4px ${result.risk_score > 70 ? '#30d158' : '#ff9f0a'})` }}>
+                          {result.risk_score}
+                        </div>
+                        <div style={{ fontSize: 9, color: '#86868b', letterSpacing: '0.05em', textTransform: 'uppercase', fontWeight: 600 }}>safety</div>
                       </div>
                     </div>
-                    <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: 16 }}>
-                      <div style={{ fontFamily: '"Space Grotesk"', fontWeight: 700, fontSize: 28, color: result.risk_score > 70 ? '#30D158' : result.risk_score > 40 ? '#FF9F0A' : '#FF3B30', letterSpacing: '-0.04em' }}>
-                        {result.risk_score}
-                      </div>
-                      <div style={{ fontSize: 9, color: '#444', letterSpacing: '0.06em', textTransform: 'uppercase' }}>safety</div>
+                    <div style={{ fontSize: 11, color: '#86868b', marginTop: 10, lineHeight: 1.5 }}>
+                      Verifies agent outputs before delivery. Prevents data exfiltration, system prompt leakage, and exposed API credentials.
                     </div>
                   </div>
 
                   {/* Leaks */}
                   {result.leaks_found.length > 0 && (
-                    <div className="card p-4">
-                      <div style={{ fontSize: 10, color: '#444', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>
-                        Detected
+                    <div className="card p-5">
+                      <div style={{ fontSize: 10, color: '#86868b', letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 12, fontWeight: 600 }}>
+                        Exfiltration Signatures Detected
                       </div>
-                      <div className="space-y-2">
+                      <div className="space-y-2.5">
                         {result.leaks_found.map((l, i) => {
                           const Icon = TYPE_ICONS[l.leak_type] || KeyRound
+                          const color = SEV[l.severity] || '#86868b'
                           return (
-                            <div key={i} className="flex items-center gap-3 p-2 rounded-lg"
-                              style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                              <Icon size={12} color={SEV[l.severity] || '#888'} />
-                              <span style={{ fontSize: 12, color: '#777', flex: 1 }}>{l.description}</span>
+                            <div key={i} className="flex items-center gap-3.5 p-3 rounded-xl"
+                              style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                              <Icon size={13} color={color} style={{ filter: `drop-shadow(0 0 4px ${color})` }} />
+                              <span style={{ fontSize: 13, color: '#ffffff', flex: 1, fontWeight: 600 }}>{l.description}</span>
                               <span className={`badge badge-${l.severity}`}>{l.severity}</span>
                             </div>
                           )
                         })}
                       </div>
+                      <div style={{ fontSize: 11, color: '#86868b', marginTop: 10, lineHeight: 1.5, borderTop: '1px solid rgba(255,255,255,0.04)', paddingTop: 8 }}>
+                        List of patterns matched in the agent output. System automatically redacts these segments before sending them.
+                      </div>
                     </div>
                   )}
 
                   {/* Before / after */}
-                  <div className="card p-4">
-                    <div style={{ fontSize: 10, color: '#444', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12 }}>
-                      Redaction Result
+                  <div className="card p-5">
+                    <div style={{ fontSize: 10, color: '#86868b', letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 12, fontWeight: 600 }}>
+                      Sanitization Analysis
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-2 gap-3.5">
                       <div>
-                        <div style={{ fontSize: 10, color: '#FF3B30', marginBottom: 6, letterSpacing: '0.04em' }}>RAW (unsafe)</div>
-                        <div style={{ padding: '10px 12px', background: 'rgba(255,59,48,0.05)', border: '1px solid rgba(255,59,48,0.15)', borderRadius: 8, fontSize: 11, fontFamily: '"IBM Plex Mono"', color: '#ff7b73', whiteSpace: 'pre-wrap', wordBreak: 'break-all', lineHeight: 1.6, minHeight: 80 }}>
+                        <div style={{ fontSize: 10, color: '#ff453a', marginBottom: 6, letterSpacing: '0.05em', fontWeight: 600 }}>RAW (unsafe)</div>
+                        <div style={{ padding: '12px 14px', background: 'rgba(255,69,58,0.04)', border: '1px solid rgba(255,69,58,0.2)', borderRadius: 10, fontSize: 12, fontFamily: '"IBM Plex Mono"', color: '#ff8a80', whiteSpace: 'pre-wrap', wordBreak: 'break-all', lineHeight: 1.6, minHeight: 90 }}>
                           {text}
                         </div>
                       </div>
                       <div>
-                        <div style={{ fontSize: 10, color: '#30D158', marginBottom: 6, letterSpacing: '0.04em' }}>SHIELDED (safe)</div>
-                        <div style={{ padding: '10px 12px', background: 'rgba(48,209,88,0.05)', border: '1px solid rgba(48,209,88,0.15)', borderRadius: 8, fontSize: 11, fontFamily: '"IBM Plex Mono"', color: '#6de593', whiteSpace: 'pre-wrap', wordBreak: 'break-all', lineHeight: 1.6, minHeight: 80 }}>
+                        <div style={{ fontSize: 10, color: '#30d158', marginBottom: 6, letterSpacing: '0.05em', fontWeight: 600 }}>SHIELDED (safe)</div>
+                        <div style={{ padding: '12px 14px', background: 'rgba(48,209,88,0.04)', border: '1px solid rgba(48,209,88,0.2)', borderRadius: 10, fontSize: 12, fontFamily: '"IBM Plex Mono"', color: '#a7f3d0', whiteSpace: 'pre-wrap', wordBreak: 'break-all', lineHeight: 1.6, minHeight: 90 }}>
                           {result.redacted_text}
                         </div>
                       </div>
                     </div>
+                    <div style={{ fontSize: 11, color: '#86868b', marginTop: 12, lineHeight: 1.5, borderTop: '1px solid rgba(255,255,255,0.04)', paddingTop: 10 }}>
+                      Redacts sensitive matches in real-time. Safe tokens are replaced with masked placeholders while preserving non-sensitive context.
+                    </div>
                   </div>
 
                   <button onClick={() => { setResult(null); setText('') }} className="btn btn-secondary w-full text-xs">
-                    <RotateCcw size={12} /> Scan another
+                    <RotateCcw size={12} /> Scan Another Payload
                   </button>
                 </motion.div>
               )}

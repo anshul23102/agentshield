@@ -14,20 +14,21 @@ function PatternRow({ p, i }) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: Math.min(i * 0.015, 0.4) }}
       className="card-flat overflow-hidden"
+      style={{ marginBottom: 6 }}
     >
       <button
         onClick={() => setOpen(!open)}
-        className="w-full flex items-center gap-3 p-3.5"
+        className="w-full flex items-center gap-4 p-4"
         style={{ textAlign: 'left' }}
       >
-        <span className={`badge badge-${p.threat_level}`} style={{ flexShrink: 0 }}>{p.threat_level}</span>
-        <span style={{ fontSize: 11, color: '#444', fontFamily: '"IBM Plex Mono"', flexShrink: 0, width: 64 }}>{p.id}</span>
-        <span style={{ fontSize: 13, color: '#888', flex: 1 }}>{p.description}</span>
-        <span style={{ fontSize: 11, color: '#333', flexShrink: 0, display: 'none', width: 180 }}
+        <span className={`badge badge-${p.threat_level}`} style={{ flexShrink: 0, minWidth: 72, justifyContent: 'center' }}>{p.threat_level}</span>
+        <span style={{ fontSize: 11, color: '#0071e3', fontFamily: '"IBM Plex Mono"', flexShrink: 0, width: 64, fontWeight: 600 }}>{p.id}</span>
+        <span style={{ fontSize: 13, color: '#ffffff', flex: 1, fontWeight: 500 }}>{p.description}</span>
+        <span style={{ fontSize: 11, color: '#86868b', flexShrink: 0, display: 'none', width: 180, fontWeight: 500 }}
           className="md:block truncate">
-          {p.category}
+          {p.category.toUpperCase()}
         </span>
-        {open ? <ChevronUp size={13} color="#333" /> : <ChevronDown size={13} color="#333" />}
+        {open ? <ChevronUp size={14} color="#86868b" /> : <ChevronDown size={14} color="#86868b" />}
       </button>
 
       <AnimatePresence>
@@ -37,15 +38,15 @@ function PatternRow({ p, i }) {
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.2 }}
-            style={{ borderTop: '1px solid rgba(255,255,255,0.06)', overflow: 'hidden' }}
+            style={{ borderTop: '1px solid rgba(255,255,255,0.05)', overflow: 'hidden' }}
           >
-            <div className="p-4 space-y-3" style={{ background: 'rgba(255,255,255,0.01)' }}>
-              <div style={{ fontSize: 11, color: '#444' }}>
-                Category: <span style={{ color: '#666' }}>{p.category}</span>
+            <div className="p-5 space-y-4" style={{ background: 'rgba(255,255,255,0.01)' }}>
+              <div style={{ fontSize: 12, color: '#86868b', fontWeight: 500 }}>
+                Classification Category: <span style={{ color: '#ffffff', fontWeight: 600 }}>{p.category}</span>
               </div>
               <div>
-                <div style={{ fontSize: 10, color: '#333', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 6 }}>Example</div>
-                <div style={{ fontSize: 12, color: '#777', fontFamily: '"IBM Plex Mono"', lineHeight: 1.6, padding: '10px 14px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8 }}>
+                <div style={{ fontSize: 10, color: '#86868b', letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 8, fontWeight: 600 }}>Exploit Signature Example</div>
+                <div style={{ fontSize: 12, color: '#f5f5f7', fontFamily: '"IBM Plex Mono"', lineHeight: 1.6, padding: '12px 16px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 10 }}>
                   "{p.example}"
                 </div>
               </div>
@@ -88,21 +89,28 @@ export default function Intelligence() {
       <div className="flex-1 overflow-y-auto p-8 space-y-6">
 
         {/* Level stats */}
-        <div className="grid grid-cols-5 gap-3">
-          {[['all', 'All'], ['critical', 'Critical'], ['high', 'High'], ['medium', 'Medium'], ['low', 'Low']].map(([k, l]) => {
+        <div className="grid grid-cols-5 gap-4">
+          {[['all', 'All Signatures'], ['critical', 'Critical'], ['high', 'High'], ['medium', 'Medium'], ['low', 'Low']].map(([k, l]) => {
             const count = k === 'all' ? patterns.length : (stats[k] || 0)
             const active = level === k
             return (
               <motion.button
-                key={k} whileHover={{ y: -1 }} whileTap={{ y: 0 }}
+                key={k} whileHover={{ y: -2 }} whileTap={{ y: 0 }}
                 onClick={() => setLevel(k)}
-                className="card p-4 text-center"
-                style={active ? { borderColor: 'rgba(255,255,255,0.18)', background: '#171717' } : {}}
+                className="card p-5 text-center"
+                style={active ? { borderColor: 'rgba(0, 113, 227, 0.4)', background: 'rgba(0, 113, 227, 0.03)', boxShadow: '0 0 15px rgba(0,113,227,0.05)' } : {}}
               >
-                <div style={{ fontFamily: '"Space Grotesk"', fontWeight: 700, fontSize: 28, color: '#f0f0f0', letterSpacing: '-0.04em' }}>
+                <div style={{
+                  fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Outfit", sans-serif',
+                  fontWeight: 600,
+                  fontSize: 32,
+                  color: active ? '#0071e3' : '#ffffff',
+                  letterSpacing: '-0.04em',
+                  lineHeight: 1
+                }}>
                   {count}
                 </div>
-                <div style={{ fontSize: 10, color: active ? '#888' : '#444', letterSpacing: '0.06em', textTransform: 'uppercase', marginTop: 4 }}>
+                <div style={{ fontSize: 10, color: active ? '#ffffff' : '#86868b', letterSpacing: '0.05em', textTransform: 'uppercase', marginTop: 8, fontWeight: 600 }}>
                   {l}
                 </div>
               </motion.button>
@@ -112,28 +120,28 @@ export default function Intelligence() {
 
         {/* Search */}
         <div className="relative">
-          <Search size={13} color="#444" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+          <Search size={14} color="#86868b" style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
           <input
             type="text"
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Search by ID, description, category…"
+            placeholder="Search by signature ID, description, classification category…"
             className="input"
-            style={{ paddingLeft: 38 }}
+            style={{ paddingLeft: 44 }}
           />
         </div>
 
         {/* Count */}
-        <div style={{ fontSize: 11, color: '#333', fontFamily: '"IBM Plex Mono"' }}>
-          {filtered.length} of {patterns.length} patterns
+        <div style={{ fontSize: 11, color: '#86868b', fontFamily: '"IBM Plex Mono"', fontWeight: 600 }}>
+          FILTERED RESULTS: {filtered.length} OF {patterns.length} SIGNATURES
         </div>
 
         {/* List */}
-        <div className="space-y-1">
+        <div className="space-y-1 pb-8">
           {loading
-            ? <div style={{ textAlign: 'center', padding: '48px 0', color: '#333', fontSize: 12, fontFamily: '"IBM Plex Mono"' }}>Loading…</div>
+            ? <div style={{ textAlign: 'center', padding: '48px 0', color: '#86868b', fontSize: 12, fontFamily: '"IBM Plex Mono"' }}>LOADING INTELLIGENCE ENGINE…</div>
             : filtered.length === 0
-              ? <div style={{ textAlign: 'center', padding: '48px 0', color: '#333', fontSize: 12, fontFamily: '"IBM Plex Mono"' }}>No patterns match</div>
+              ? <div style={{ textAlign: 'center', padding: '48px 0', color: '#86868b', fontSize: 12, fontFamily: '"IBM Plex Mono"' }}>NO SIGNATURES MATCH THE FILTER CRITERIA</div>
               : filtered.map((p, i) => <PatternRow key={p.id} p={p} i={i} />)
           }
         </div>

@@ -46,10 +46,10 @@ export default function LoadingScreen({ onComplete }) {
             transition={{ duration: 0.5 }}
             className="text-center mb-12"
           >
-            <div style={{ fontFamily: '"Space Grotesk", sans-serif', fontSize: 42, fontWeight: 700, letterSpacing: '-0.04em', color: '#f0f0f0' }}>
+            <div style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Outfit", sans-serif', fontSize: 42, fontWeight: 600, letterSpacing: '-0.04em', color: '#f5f5f7' }}>
               AgentShield
             </div>
-            <div style={{ fontSize: 11, letterSpacing: '0.2em', color: '#444', textTransform: 'uppercase', marginTop: 8 }}>
+            <div style={{ fontSize: 11, letterSpacing: '0.12em', color: '#86868b', textTransform: 'uppercase', marginTop: 8, fontWeight: 500 }}>
               AI Agent Security Platform
             </div>
           </motion.div>
@@ -62,14 +62,14 @@ export default function LoadingScreen({ onComplete }) {
             style={{ width: 240 }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
-              <span style={{ fontSize: 11, color: '#444', fontFamily: '"IBM Plex Mono"' }}>{LINES[line]}</span>
-              <span style={{ fontSize: 22, fontWeight: 700, color: '#f0f0f0', fontFamily: '"Space Grotesk"', letterSpacing: '-0.04em' }}>
-                {pct}<span style={{ fontSize: 12, color: '#444' }}>%</span>
+              <span style={{ fontSize: 11, color: '#86868b', fontFamily: '"IBM Plex Mono"' }}>{LINES[line]}</span>
+              <span style={{ fontSize: 22, fontWeight: 600, color: '#f5f5f7', fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Outfit", sans-serif', letterSpacing: '-0.04em' }}>
+                {pct}<span style={{ fontSize: 12, color: '#86868b' }}>%</span>
               </span>
             </div>
             <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', overflow: 'hidden', borderRadius: 1 }}>
               <motion.div
-                style={{ height: '100%', background: '#f0f0f0', borderRadius: 1 }}
+                style={{ height: '100%', background: 'linear-gradient(90deg, #0a84ff 0%, #ffffff 100%)', borderRadius: 1 }}
                 animate={{ width: `${pct}%` }}
                 transition={{ ease: 'linear', duration: 0.05 }}
               />

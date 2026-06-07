@@ -2,7 +2,6 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { Suspense, lazy, useState } from 'react'
 import Sidebar from './components/layout/Sidebar'
 import ParticleBackground from './components/ui/ParticleBackground'
-import CustomCursor from './components/ui/CustomCursor'
 import LoadingScreen from './components/ui/LoadingScreen'
 
 const Dashboard   = lazy(() => import('./pages/Dashboard'))
@@ -25,7 +24,6 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      <CustomCursor />
       {booting && <LoadingScreen onComplete={() => { sessionStorage.setItem('as_booted','1'); setBooting(false) }} />}
 
       {/* Subtle particle field */}
@@ -35,7 +33,7 @@ export default function App() {
       <div style={{
         position: 'fixed', top: 0, left: '50%', transform: 'translateX(-50%)',
         width: 600, height: 300, pointerEvents: 'none', zIndex: 0,
-        background: 'radial-gradient(ellipse at top, rgba(10,132,255,0.04) 0%, transparent 70%)',
+        background: 'radial-gradient(ellipse at top, rgba(0,113,227,0.04) 0%, transparent 70%)',
       }} />
 
       <div style={{ position: 'relative', zIndex: 10, display: 'flex', height: '100vh', overflow: 'hidden' }}>
