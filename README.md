@@ -333,7 +333,7 @@ This project was developed with assistance from **Claude AI (Anthropic)**. The f
 
 ---
 
-## 👤 Team
+## 👤 Team : **BloodWyrm**
 
 **Anshul Jain** : Solo  
 IIIT Delhi · Full-stack developer & AI security researcher  
