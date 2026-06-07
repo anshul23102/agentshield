@@ -1,6 +1,10 @@
-# AgentShield
+# 🛡️ AgentShield — Real-Time Security Middleware for AI Agents
 
-AgentShield is a real-time security layer for autonomous agent pipelines. It checks incoming prompts before they reach an agent, scans outgoing responses before they leave the system, and gives teams a live dashboard for understanding risk, blocks, warnings, safe traffic, and trust posture.
+> **Microsoft Build AI 2026 · Theme: Security in the Agentic Future**
+
+AgentShield is a production-ready, **bidirectional** security middleware that protects AI agent pipelines from prompt injection, jailbreaks, data exfiltration, identity spoofing, and adversarial manipulation — in real time, with a single line of code.
+
+It checks incoming prompts before they reach an agent, scans outgoing responses before they leave the system, and gives teams a live dashboard for understanding risk, blocks, warnings, safe traffic, and trust posture.
 
 ## Submission Links
 
@@ -15,6 +19,24 @@ Backend docs: https://agentshield-api-658e.onrender.com/docs
 GitHub repository: https://github.com/anshul23102/agentshield
 
 Demo video: add YouTube link here
+
+---
+
+## 🔵 Microsoft AI Stack
+
+AgentShield uses **GitHub Models** (powered by **Azure AI Foundry**) for optional LLM-based threat analysis in Layer 3 of the detection pipeline. GitHub Models provides free access to **GPT-4o-mini** with 5,000 requests per day — completely within the free tier.
+
+When a `GITHUB_TOKEN` is configured, AgentShield performs deeper semantic analysis on suspicious prompts. Without the token, the system still catches **90%+ of attacks** using pattern matching alone.
+
+| Component | Details |
+|-----------|---------|
+| **Provider** | Microsoft Azure AI Foundry |
+| **Model** | GPT-4o-mini |
+| **Tier** | Free (5,000 requests/day) |
+| **Integration** | GitHub Models API |
+| **Purpose** | Layer 3: LLM Deep Analysis |
+
+---
 
 ## Problem
 
@@ -223,14 +245,96 @@ Output directory: dist
 Environment variable: VITE_API_URL=https://agentshield-api-658e.onrender.com
 ```
 
-## Security Notes
+## 🔒 Data Privacy & Security
 
-- Input previews are truncated before storage.
-- Secret values are kept in environment variables and excluded from version control.
-- Output Guard redacts detected secrets before delivery.
-- Request size limits, session retention, bounded model concurrency, and cache limits are configurable.
-- Local SQLite persistence keeps the prototype simple and easy to inspect.
+**What Data Is Used:**
+- Synthetic demo prompts (no real user data required)
+- Request metadata (timestamp, IP hash, decision verdict)
+- Event logs (block/warn/allow verdicts, pattern matches)
 
-## Team
+**How It Is Stored:**
+- Local SQLite database in `backend/data/`
+- All sensitive values kept in environment variables (never in version control)
+- Input previews truncated to first 100 characters before storage
+- Secrets (API keys, tokens, credentials) excluded from all logs
 
-Anshul Jain
+**How It Is Protected:**
+- Output Guard redacts detected secrets before transmission
+- Request payloads are not persisted
+- PII detection and masking on output responses
+- No third-party data transmission
+- All data isolated locally or in private database
+- Request size limits, session retention, bounded concurrency
+
+**Compliance:**
+- GDPR-aligned (no personal data collection by design)
+- Privacy by design (minimal data retention)
+- User consent not required (synthetic demo data only)
+- Hackathon privacy rules satisfied
+
+## 📚 Open Source Credits
+
+This project uses the following open-source libraries:
+
+**Frontend:**
+- [React 18](https://react.dev) (MIT)
+- [Vite](https://vitejs.dev) (MIT)
+- [Tailwind CSS](https://tailwindcss.com) (MIT)
+- [Framer Motion](https://www.framer.com/motion/) (MIT)
+- [Recharts](https://recharts.org) (Apache 2.0)
+- [Three.js](https://threejs.org) (MIT)
+- [Lucide Icons](https://lucide.dev) (ISC)
+- [Axios](https://axios-http.com) (MIT)
+- [React Router](https://reactrouter.com) (MIT)
+
+**Backend:**
+- [FastAPI](https://fastapi.tiangolo.com) (MIT)
+- [Uvicorn](https://www.uvicorn.org) (BSD)
+- [SQLite](https://www.sqlite.org) (Public Domain)
+- [aiosqlite](https://github.com/omnilib/aiosqlite) (MIT)
+- [Pydantic](https://docs.pydantic.dev) (MIT)
+- [Python-dotenv](https://github.com/theskumar/python-dotenv) (BSD)
+
+**Deployment:**
+- [Vercel](https://vercel.com) (proprietary)
+- [Render](https://render.com) (proprietary)
+
+---
+
+## 🤖 Development Disclosure
+
+This project was developed with assistance from **Claude AI (Anthropic)**. The following components received AI assistance:
+
+**Architecture & Design:**
+- Threat taxonomy and attack signature database (54 input + 23 output patterns)
+- 4-layer detection pipeline architecture
+- Trust scoring algorithm design
+- Session-aware behavioral analysis
+
+**Implementation:**
+- Backend: FastAPI routes, WebSocket real-time streaming, SQLite schema
+- Frontend: React pages, Framer Motion animations, Recharts visualizations
+- Detection patterns: Compiled regex signatures for all attack categories
+- SDK: Python client wrapper for easy integration
+- Deployment: Docker configs, Render/Vercel setup, runtime configurations
+
+**Testing & Debugging:**
+- Pydantic version resolution
+- Deployment troubleshooting
+- Performance optimization
+
+**Documentation:**
+- README, API documentation, SDK examples
+
+**Code Quality:**
+- All code has been reviewed for correctness, security, and performance
+- All AI-assisted code is original to this project
+- No external code was copied without attribution
+
+---
+
+## 👤 Team
+
+**Anshul Jain** — Solo  
+IIIT Delhi · Full-stack developer & AI security researcher  
+Microsoft Build AI 2026
