@@ -13,6 +13,7 @@ from typing import Optional
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -570,18 +571,236 @@ async def status():
 
 @app.get("/")
 async def root():
-    return {
-        "service": "AgentShield API",
-        "status": "operational",
-        "status_url": "/status",
-        "api_status_url": "/api/status",
-        "docs_url": "/docs",
+    return HTMLResponse("""
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AgentShield API</title>
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: radial-gradient(circle at 20% 20%, #16345f, transparent 34%),
+        radial-gradient(circle at 82% 72%, #432017, transparent 30%),
+        #05070c;
+      color: #f5f7fb;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
+    main {
+      width: min(760px, calc(100vw - 40px));
+      padding: 44px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 24px;
+      background: rgba(18, 22, 30, 0.72);
+      box-shadow: 0 30px 90px rgba(0, 0, 0, 0.42);
+      backdrop-filter: blur(22px);
+    }
+    .badge {
+      display: inline-flex;
+      gap: 8px;
+      align-items: center;
+      padding: 8px 12px;
+      border-radius: 999px;
+      color: #71f083;
+      background: rgba(57, 255, 109, 0.12);
+      border: 1px solid rgba(113, 240, 131, 0.22);
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-size: 12px;
+    }
+    h1 {
+      margin: 22px 0 12px;
+      font-size: clamp(40px, 7vw, 72px);
+      line-height: 0.95;
+      letter-spacing: 0;
+    }
+    p {
+      margin: 0;
+      color: #c7ccd8;
+      font-size: 18px;
+      line-height: 1.65;
+      max-width: 620px;
+    }
+    nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 32px;
+    }
+    a {
+      color: #f5f7fb;
+      text-decoration: none;
+      padding: 12px 16px;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.09);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      font-weight: 700;
+    }
+    a.primary {
+      background: #2f7df6;
+      border-color: #5d9bff;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <span class="badge">Operational</span>
+    <h1>AgentShield API</h1>
+    <p>Backend service for real-time input inspection, output leak scanning, trust scoring, live events, and dashboard analytics.</p>
+    <nav>
+      <a class="primary" href="/status">View Status</a>
+      <a href="/docs">API Docs</a>
+      <a href="/api/status">JSON Status</a>
+      <a href="https://agentshield-three.vercel.app">Open Platform</a>
+    </nav>
+  </main>
+</body>
+</html>
+    """)
 
 
 @app.get("/status")
 async def public_status():
-    return await status()
+    payload = await status()
+    llm_state = "Active" if payload["llm_available"] else "Offline"
+    return HTMLResponse(f"""
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AgentShield Status</title>
+  <style>
+    body {{
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: radial-gradient(circle at 18% 22%, #153963, transparent 34%),
+        radial-gradient(circle at 88% 70%, #3f2218, transparent 32%),
+        #05070c;
+      color: #f5f7fb;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }}
+    main {{
+      width: min(900px, calc(100vw - 40px));
+      padding: 36px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 24px;
+      background: rgba(18, 22, 30, 0.74);
+      box-shadow: 0 30px 90px rgba(0, 0, 0, 0.42);
+      backdrop-filter: blur(22px);
+    }}
+    .top {{
+      display: flex;
+      justify-content: space-between;
+      gap: 24px;
+      align-items: flex-start;
+      margin-bottom: 28px;
+    }}
+    .badge {{
+      padding: 8px 12px;
+      border-radius: 999px;
+      color: #71f083;
+      background: rgba(57, 255, 109, 0.12);
+      border: 1px solid rgba(113, 240, 131, 0.22);
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-size: 12px;
+    }}
+    h1 {{
+      margin: 0 0 10px;
+      font-size: clamp(34px, 5vw, 58px);
+      letter-spacing: 0;
+    }}
+    p {{
+      margin: 0;
+      color: #c7ccd8;
+      line-height: 1.55;
+    }}
+    .grid {{
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 24px;
+    }}
+    .card {{
+      min-height: 118px;
+      padding: 18px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.075);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+    }}
+    .value {{
+      display: block;
+      font-size: 32px;
+      font-weight: 900;
+      color: #ffffff;
+      margin-bottom: 8px;
+    }}
+    .label {{
+      color: #b9bfcc;
+      font-size: 13px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-weight: 800;
+    }}
+    nav {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 28px;
+    }}
+    a {{
+      color: #f5f7fb;
+      text-decoration: none;
+      padding: 12px 16px;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.09);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      font-weight: 700;
+    }}
+    @media (max-width: 760px) {{
+      .grid {{
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }}
+      .top {{
+        flex-direction: column;
+      }}
+    }}
+  </style>
+</head>
+<body>
+  <main>
+    <section class="top">
+      <div>
+        <h1>AgentShield Status</h1>
+        <p>The backend is live and ready to inspect prompts, scan outputs, stream dashboard events, and serve analytics.</p>
+      </div>
+      <span class="badge">{payload["status"]}</span>
+    </section>
+    <section class="grid">
+      <div class="card"><span class="value">{payload["pattern_count"]}</span><span class="label">Input Patterns</span></div>
+      <div class="card"><span class="value">{payload["output_pattern_count"]}</span><span class="label">Output Patterns</span></div>
+      <div class="card"><span class="value">{llm_state}</span><span class="label">Model Layer</span></div>
+      <div class="card"><span class="value">{payload["ws_clients"]}</span><span class="label">Live Clients</span></div>
+    </section>
+    <nav>
+      <a href="/">Service Home</a>
+      <a href="/docs">API Docs</a>
+      <a href="/api/status">JSON Status</a>
+      <a href="https://agentshield-three.vercel.app">Open Platform</a>
+    </nav>
+  </main>
+</body>
+</html>
+    """)
 
 
 # ── Pre-built attack scenarios for demo ──────────────────────────────────────
