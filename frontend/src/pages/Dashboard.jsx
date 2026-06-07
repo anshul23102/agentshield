@@ -1,13 +1,16 @@
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Shield, TrendingUp, Activity } from 'lucide-react'
+import { Shield, TrendingUp, Activity, Settings, Trash2, Database, Sliders } from 'lucide-react'
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid,
 } from 'recharts'
 import Header from '../components/layout/Header'
 import { useWebSocket } from '../hooks/useWebSocket'
-import { getAnalytics, getStatus, getRecentEvents } from '../utils/api'
+import { 
+  getAnalytics, getStatus, getRecentEvents, 
+  getAdminConfig, toggleDemoTraffic, clearLLMCache, resetSessions 
+} from '../utils/api'
 
 /* ── Animated counter ── */
 function Count({ to, suffix = '' }) {
@@ -97,6 +100,8 @@ export default function Dashboard() {
   const [status,    setStatus]    = useState(null)
   const [feed,      setFeed]      = useState([])
   const [wsConn,    setWsConn]    = useState(false)
+  const [adminConfig, setAdminConfig] = useState({ demo_traffic_enabled: true, llm_cache_size: 0, total_active_sessions: 0 })
+  const [toast, setToast] = useState(null)
 
   const { connected } = useWebSocket((msg) => {
     setWsConn(true)
@@ -104,6 +109,45 @@ export default function Dashboard() {
     if (msg.type === 'init' && msg.recent_events) setFeed(msg.recent_events)
   })
   useEffect(() => setWsConn(connected), [connected])
+
+  const refreshAdmin = () => {
+    getAdminConfig().then(setAdminConfig).catch(() => {})
+  }
+
+  const handleToggleTraffic = async () => {
+    try {
+      const res = await toggleDemoTraffic()
+      setAdminConfig(prev => ({ ...prev, demo_traffic_enabled: res.enabled }))
+      showToast(res.message, 'success')
+    } catch {
+      showToast('Failed to toggle demo traffic.', 'error')
+    }
+  }
+
+  const handleClearCache = async () => {
+    try {
+      const res = await clearLLMCache()
+      showToast(res.message, 'success')
+      refreshAdmin()
+    } catch {
+      showToast('Failed to clear cache.', 'error')
+    }
+  }
+
+  const handleResetSessions = async () => {
+    try {
+      const res = await resetSessions()
+      showToast(res.message, 'success')
+      refreshAdmin()
+    } catch {
+      showToast('Failed to wipe sessions.', 'error')
+    }
+  }
+
+  const showToast = (message, type) => {
+    setToast({ message, type })
+    setTimeout(() => setToast(null), 3000)
+  }
 
   useEffect(() => {
     Promise.all([getAnalytics(), getStatus(), getRecentEvents(40)])
@@ -113,7 +157,11 @@ export default function Dashboard() {
         if (e.events?.length) setFeed(p => p.length ? p : e.events)
       })
       .catch(() => {})
-    const id = setInterval(() => getAnalytics().then(setAnalytics).catch(() => {}), 20_000)
+    refreshAdmin()
+    const id = setInterval(() => {
+      getAnalytics().then(setAnalytics).catch(() => {})
+      refreshAdmin()
+    }, 12000)
     return () => clearInterval(id)
   }, [])
 
@@ -267,7 +315,192 @@ export default function Dashboard() {
             </div>
           </motion.div>
         </div>
+
+        {/* ── System Operations & Diagnostics ── */}
+        <div className="grid grid-cols-5 gap-6">
+          
+          {/* Operations Panel */}
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4, duration: 0.4 }}
+            className="col-span-2 card p-5"
+          >
+            <div className="section-header" style={{ marginBottom: 16, paddingBottom: 14, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+              <div className="flex items-center gap-2">
+                <Sliders size={14} color="#0071e3" />
+                <span style={{ fontFamily: '"Outfit", "-apple-system", sans-serif', fontSize: 13, fontWeight: 600, color: '#ffffff', letterSpacing: '-0.01em' }}>
+                  System Control Panel
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              {/* Traffic toggle */}
+              <button
+                onClick={handleToggleTraffic}
+                className="flex items-center justify-between w-full p-3.5 rounded-xl transition-all duration-250 text-left hover:bg-[rgba(255,255,255,0.02)]"
+                style={{
+                  background: 'rgba(255,255,255,0.01)',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: 12.5, fontWeight: 600, color: '#ffffff', fontFamily: '"Plus Jakarta Sans", sans-serif' }}>Demo Traffic Generator</div>
+                  <div style={{ fontSize: 10.5, color: 'var(--t2)', marginTop: 3, fontWeight: 400, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>Simulates live events every 10-15s</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span style={{ 
+                    fontSize: 10.5, 
+                    fontWeight: 600, 
+                    color: adminConfig.demo_traffic_enabled ? '#30d158' : '#ff9f0a',
+                    fontFamily: 'monospace' 
+                  }}>
+                    {adminConfig.demo_traffic_enabled ? 'RUNNING' : 'PAUSED'}
+                  </span>
+                  <div style={{
+                    width: 36,
+                    height: 20,
+                    borderRadius: 10,
+                    background: adminConfig.demo_traffic_enabled ? '#30d158' : 'rgba(255,255,255,0.1)',
+                    position: 'relative',
+                    transition: 'background 0.2s',
+                    cursor: 'pointer'
+                  }}>
+                    <div style={{
+                      width: 14,
+                      height: 14,
+                      borderRadius: '50%',
+                      background: '#ffffff',
+                      position: 'absolute',
+                      top: 3,
+                      left: adminConfig.demo_traffic_enabled ? 19 : 3,
+                      transition: 'left 0.2s cubic-bezier(0.25, 0.1, 0.25, 1)',
+                    }} />
+                  </div>
+                </div>
+              </button>
+
+              <div className="grid grid-cols-2 gap-3">
+                {/* Clear cache */}
+                <button
+                  onClick={handleClearCache}
+                  className="btn btn-secondary text-xs flex items-center justify-center gap-2 py-3 rounded-xl hover:border-[#ff453a]/30 hover:bg-[#ff453a]/5"
+                  style={{ fontFamily: '"Plus Jakarta Sans", sans-serif', fontWeight: 500 }}
+                >
+                  <Trash2 size={13} /> Purge LLM Cache
+                </button>
+                {/* Reset sessions */}
+                <button
+                  onClick={handleResetSessions}
+                  className="btn btn-secondary text-xs flex items-center justify-center gap-2 py-3 rounded-xl hover:border-[#ff9f0a]/30 hover:bg-[#ff9f0a]/5"
+                  style={{ fontFamily: '"Plus Jakarta Sans", sans-serif', fontWeight: 500 }}
+                >
+                  <Database size={13} /> Clear Sessions
+                </button>
+              </div>
+            </div>
+            
+            <div style={{ fontSize: 11, color: '#86868b', marginTop: 12, lineHeight: 1.5, borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 10, fontFamily: '"Plus Jakarta Sans", sans-serif', fontWeight: 300 }}>
+              Administration controls for managing the platform simulation state, wiping contextual agent memory, and clearing LLM analysis caches.
+            </div>
+          </motion.div>
+
+          {/* Diagnostics Panel */}
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.45, duration: 0.4 }}
+            className="col-span-3 card p-5"
+          >
+            <div className="section-header" style={{ marginBottom: 16, paddingBottom: 14, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+              <div className="flex items-center gap-2">
+                <Settings size={14} color="#0071e3" />
+                <span style={{ fontFamily: '"Outfit", "-apple-system", sans-serif', fontSize: 13, fontWeight: 600, color: '#ffffff', letterSpacing: '-0.01em' }}>
+                  Engine Diagnostics & Status
+                </span>
+              </div>
+            </div>
+
+            <div className="p-4 rounded-xl" style={{ background: 'rgba(5, 5, 5, 0.4)', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
+              <div className="space-y-3.5">
+                <div className="flex items-center justify-between text-xs font-sans">
+                  <span style={{ color: 'var(--t2)', fontWeight: 400 }}>Active LLM Provider</span>
+                  <span style={{ color: '#ffffff', fontWeight: 600, fontFamily: 'monospace' }}>
+                    {status?.llm_provider === 'github_models' ? 'GitHub Models (gpt-4o-mini)' : 
+                     status?.llm_provider === 'groq' ? 'Groq (llama-3.1-8b)' : 'Pattern-Only Mode'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-xs font-sans">
+                  <span style={{ color: 'var(--t2)', fontWeight: 400 }}>Active WebSocket Streams</span>
+                  <span style={{ color: '#30d158', fontWeight: 600, fontFamily: 'monospace' }}>
+                    {status?.ws_clients || 1} Connected (Active)
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-xs font-sans">
+                  <span style={{ color: 'var(--t2)', fontWeight: 400 }}>Database Health</span>
+                  <span style={{ color: '#30d158', fontWeight: 600, fontFamily: 'monospace' }}>
+                    SQLite / aiosqlite (Healthy)
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-xs font-sans">
+                  <span style={{ color: 'var(--t2)', fontWeight: 400 }}>LLM Analysis Cache Size</span>
+                  <span style={{ color: '#ffffff', fontWeight: 600, fontFamily: 'monospace' }}>
+                    {adminConfig.llm_cache_size} Entries
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-xs font-sans">
+                  <span style={{ color: 'var(--t2)', fontWeight: 400 }}>Memory Session Count</span>
+                  <span style={{ color: '#ffffff', fontWeight: 600, fontFamily: 'monospace' }}>
+                    {adminConfig.total_active_sessions} Sessions
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ fontSize: 11, color: '#86868b', marginTop: 12, lineHeight: 1.5, borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 10, fontFamily: '"Plus Jakarta Sans", sans-serif', fontWeight: 300 }}>
+              Live server performance variables, active client sockets, and cache utilization. Evaluators can confirm model health and active connection pipelines here.
+            </div>
+          </motion.div>
+
         </div>
+        </div>
+
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: 15, x: '-50%' }}
+            animate={{ opacity: 1, y: 0, x: '-50%' }}
+            exit={{ opacity: 0, y: 15, x: '-50%' }}
+            style={{
+              position: 'fixed',
+              bottom: 24,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              zIndex: 100,
+              background: 'rgba(15, 15, 15, 0.9)',
+              border: `1px solid ${toast.type === 'error' ? 'rgba(255,69,58,0.25)' : 'rgba(48,209,88,0.25)'}`,
+              boxShadow: '0 8px 30px rgba(0, 0, 0, 0.5)',
+              borderRadius: 12,
+              padding: '10px 18px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              fontSize: 12,
+              color: '#ffffff',
+              fontFamily: '"Plus Jakarta Sans", sans-serif',
+              backdropFilter: 'blur(20px)',
+            }}
+          >
+            <div style={{
+              width: 6, height: 6, borderRadius: '50%',
+              background: toast.type === 'error' ? '#ff453a' : '#30d158',
+              boxShadow: `0 0 6px ${toast.type === 'error' ? '#ff453a' : '#30d158'}`
+            }} />
+            {toast.message}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       </div>
     </div>

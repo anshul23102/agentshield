@@ -38,3 +38,15 @@ export const getDemoLeaks = () =>
 
 export const getSessionStats = (sessionId) =>
   api.get(`/session/${sessionId}`).then(r => r.data)
+
+export const getAdminConfig = () =>
+  api.get('/admin/config').then(r => r.data)
+
+export const toggleDemoTraffic = () =>
+  api.post('/admin/toggle-generator').then(r => r.data)
+
+export const clearLLMCache = () =>
+  api.post('/admin/clear-cache').then(r => r.data)
+
+export const resetSessions = () =>
+  api.post('/admin/reset-sessions').then(r => r.data)

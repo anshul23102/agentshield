@@ -172,10 +172,6 @@ async def seed_database_if_empty(db: aiosqlite.Connection):
         }
     ]
 
-    weighted_pool = []
-    for t in templates:
-        weighted_pool.extend([t] * t["weight"])
-
     now_ts = time.time()
     events = []
     
@@ -195,9 +191,67 @@ async def seed_database_if_empty(db: aiosqlite.Connection):
             'scores': []
         }
         
-        num_events = random.randint(10, 15)
+        # Select template weights based on daily profiles to create anomalies (discrepancies)
+        if d == 2:
+            # Day 2 (2 days ago): Adversarial Attack campaign (high volume, high blocks)
+            num_events = random.randint(32, 40)
+            day_templates = [
+                (templates[0], 20), # Safe
+                (templates[1], 35), # DPI (block)
+                (templates[2], 25), # JB (block)
+                (templates[3], 10), # SPE (block)
+                (templates[4], 5),  # DE
+                (templates[5], 2),  # EO
+                (templates[6], 2),  # PM
+                (templates[7], 1),  # PII
+            ]
+        elif d == 5:
+            # Day 5 (5 days ago): Data Leak event (medium-high volume, high data exfil/PII leaks)
+            num_events = random.randint(24, 30)
+            day_templates = [
+                (templates[0], 30), # Safe
+                (templates[1], 5),
+                (templates[2], 5),
+                (templates[3], 5),
+                (templates[4], 25), # Data Exfil (block)
+                (templates[5], 5),
+                (templates[6], 5),
+                (templates[7], 20), # PII (block/redact)
+            ]
+        elif d == 3:
+            # Day 3 (3 days ago): Quiet safe day (very low volume, 100% allowed)
+            num_events = random.randint(4, 7)
+            day_templates = [
+                (templates[0], 95),
+                (templates[1], 1),
+                (templates[2], 1),
+                (templates[3], 1),
+                (templates[4], 1),
+                (templates[5], 1),
+                (templates[6], 0),
+                (templates[7], 0),
+            ]
+        else:
+            # Normal baseline day
+            num_events = random.randint(10, 15)
+            day_templates = [
+                (templates[0], 60),
+                (templates[1], 8),
+                (templates[2], 7),
+                (templates[3], 5),
+                (templates[4], 5),
+                (templates[5], 5),
+                (templates[6], 5),
+                (templates[7], 5),
+            ]
+
+        # Construct the day's weighted pool
+        day_pool = []
+        for temp, weight in day_templates:
+            day_pool.extend([temp] * weight)
+            
         for _ in range(num_events):
-            t = random.choice(weighted_pool)
+            t = random.choice(day_pool)
             
             day_start = now_ts - (d + 1) * 86400
             timestamp = day_start + random.randint(1800, 84600)

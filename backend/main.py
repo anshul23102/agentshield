@@ -27,6 +27,10 @@ output_guard = OutputGuard()
 ws_clients: set[WebSocket] = set()
 event_queue: asyncio.Queue = asyncio.Queue(maxsize=1000)
 
+admin_settings = {
+    "demo_traffic_enabled": True
+}
+
 
 async def demo_threat_generator():
     import random
@@ -145,6 +149,8 @@ async def demo_threat_generator():
     while True:
         try:
             await asyncio.sleep(random.randint(10, 15))
+            if not admin_settings["demo_traffic_enabled"]:
+                continue
             
             # 50% threat event, 30% safe request, 20% leak event
             roll = random.random()
@@ -601,3 +607,36 @@ DEMO_ATTACKS = [
 @app.get("/api/demo/attacks")
 async def demo_attacks():
     return {"attacks": DEMO_ATTACKS}
+
+
+# ── Admin Operations ─────────────────────────────────────────────────────────
+
+@app.post("/api/admin/clear-cache")
+async def clear_cache():
+    detector.analyzer.clear_cache()
+    return {"status": "success", "message": "LLM Analysis cache cleared."}
+
+
+@app.post("/api/admin/reset-sessions")
+async def reset_sessions():
+    detector.session_manager._sessions.clear()
+    return {"status": "success", "message": "All session states wiped."}
+
+
+@app.post("/api/admin/toggle-generator")
+async def toggle_generator():
+    admin_settings["demo_traffic_enabled"] = not admin_settings["demo_traffic_enabled"]
+    return {
+        "status": "success",
+        "enabled": admin_settings["demo_traffic_enabled"],
+        "message": f"Demo traffic generator {'enabled' if admin_settings['demo_traffic_enabled'] else 'disabled'}."
+    }
+
+
+@app.get("/api/admin/config")
+async def get_admin_config():
+    return {
+        "demo_traffic_enabled": admin_settings["demo_traffic_enabled"],
+        "llm_cache_size": len(detector.analyzer._cache),
+        "total_active_sessions": len(detector.session_manager._sessions),
+    }

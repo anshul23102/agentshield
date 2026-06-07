@@ -82,25 +82,32 @@ export default function Simulator() {
         <div className="max-w-[1200px] mx-auto h-full flex divide-x divide-[rgba(0,0,0,0.06)] px-4">
 
           {/* ── Left: Input ── */}
-          <div className="flex flex-col h-full overflow-y-auto" style={{ width: '50%' }}>
-            <div className="p-8 space-y-8 pr-10 pb-16">
+          <div className="flex flex-col h-full overflow-y-auto" style={{ width: '56%' }}>
+            <div className="p-8 space-y-6 pr-8 pb-16">
+
+              {/* Info banner */}
+              <div 
+                className="p-4 rounded-xl border border-[rgba(0,113,227,0.15)] bg-[rgba(0,113,227,0.03)] text-xs text-[#d1d1d6] leading-relaxed"
+                style={{ fontFamily: '"Plus Jakarta Sans", sans-serif' }}
+              >
+                <span className="font-semibold text-white">Sequential Protection Pipeline:</span> Prompts traverse 
+                <strong> Pattern Matching</strong> ➔ 
+                <strong> Semantic Heuristics</strong> ➔ 
+                <strong> LLM Analysis</strong> ➔ 
+                <strong> Session Guard</strong>.
+              </div>
 
               {/* Demo chips */}
               <div>
-                <p style={{ fontSize: 13, color: '#86868b', lineHeight: 1.6, marginBottom: 20, fontFamily: '"Plus Jakarta Sans", sans-serif', fontWeight: 300 }}>
-                  Test incoming prompts against our sequential guard layers. Prompts are analyzed through:
-                  <br />
-                  <strong style={{ color: '#f5f5f7', fontWeight: 500 }}>Pattern Matching ➔ Keyword Semantics ➔ LLM Deep Reasoning ➔ Behavioral Limits</strong>.
-                </p>
-                <div style={{ fontSize: 10, color: '#86868b', letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 12, fontWeight: 500, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                <div style={{ fontSize: 10, color: 'var(--t3)', letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 12, fontWeight: 600, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
                   Preloaded Scenarios
                 </div>
-                <div className="flex flex-wrap gap-2">
+                <div className="grid grid-cols-2 gap-2.5">
                   {demos.map(d => (
                     <button
                       key={d.id}
                       onClick={() => { setPrompt(d.prompt); setResult(null); taRef.current?.focus() }}
-                      className="flex items-center gap-2.5 px-4 py-2.5 rounded-full"
+                      className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-left"
                       style={{
                         background: 'rgba(255, 255, 255, 0.03)',
                         border: '1px solid rgba(255, 255, 255, 0.12)',
@@ -109,13 +116,14 @@ export default function Simulator() {
                         transition: 'all 0.2s cubic-bezier(0.25, 0, 0, 1)',
                         backdropFilter: 'blur(12px)',
                         fontFamily: '"Plus Jakarta Sans", sans-serif',
-                        fontWeight: 500
+                        fontWeight: 500,
+                        width: '100%',
                       }}
                       onMouseEnter={e => {
                         e.currentTarget.style.borderColor = '#0071e3'
                         e.currentTarget.style.color = '#ffffff'
                         e.currentTarget.style.background = 'rgba(0, 113, 227, 0.15)'
-                        e.currentTarget.style.boxShadow = '0 0 12px rgba(0, 113, 227, 0.3)'
+                        e.currentTarget.style.boxShadow = '0 2px 8px rgba(0, 113, 227, 0.2)'
                       }}
                       onMouseLeave={e => {
                         e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.12)'
@@ -124,8 +132,8 @@ export default function Simulator() {
                         e.currentTarget.style.boxShadow = 'none'
                       }}
                     >
-                      <span className={`badge badge-${d.level}`} style={{ fontSize: 9, padding: '1px 5.5px' }}>{d.level}</span>
-                      <span>{d.name}</span>
+                      <span className={`badge badge-${d.level}`} style={{ fontSize: 8.5, padding: '1.5px 5.5px', flexShrink: 0 }}>{d.level}</span>
+                      <span className="truncate">{d.name}</span>
                     </button>
                   ))}
                 </div>
@@ -145,14 +153,14 @@ export default function Simulator() {
                   placeholder={"Enter a prompt or select a scenario above…\n\nTry: 'Ignore all previous instructions'"}
                   className="input focus:ring-1 focus:ring-[#0071e3] focus:border-[#0071e3] transition-all duration-300"
                   style={{
-                    minHeight: 240,
+                    minHeight: 200,
                     fontSize: 13,
                     lineHeight: 1.6,
                     background: 'rgba(10, 10, 10, 0.6)',
                     border: '1px solid rgba(255, 255, 255, 0.08)',
                     borderRadius: '16px',
                     padding: '16px',
-                    color: '#f5f5f7',
+                    color: '#ffffff',
                     fontFamily: '"Plus Jakarta Sans", sans-serif'
                   }}
                 />
@@ -185,7 +193,7 @@ export default function Simulator() {
           </div>
 
           {/* ── Right: Result ── */}
-          <div className="flex-1 overflow-y-auto h-full" style={{ width: '50%' }}>
+          <div className="flex-1 overflow-y-auto h-full" style={{ width: '44%' }}>
             <div className="p-8 pl-10 pb-16">
               <AnimatePresence mode="wait">
                 {loading && (

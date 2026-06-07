@@ -201,10 +201,10 @@ class ThreatDetector:
             # Multi-turn attack signals
             if session_context.message_count > 5:
                 recent = self.session_manager.get_recent_messages(session_id, 5)
-                # Rising threat score → escalation attack
+                # Rising threat pattern -> decreasing trust score history
                 if session_context.threat_score_history and \
                    len(session_context.threat_score_history) >= 3 and \
-                   all(session_context.threat_score_history[-i] >= session_context.threat_score_history[-i-1]
+                   all(session_context.threat_score_history[-i] <= session_context.threat_score_history[-i-1]
                        for i in range(1, 3)):
                     behavioral_flags.append("escalating_threat_pattern")
 
