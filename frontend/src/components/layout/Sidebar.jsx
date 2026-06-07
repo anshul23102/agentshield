@@ -92,7 +92,7 @@ export default function Sidebar() {
           Powered by
         </div>
         <div style={{ fontSize: 11, color: '#f5f5f7', fontFamily: '"Plus Jakarta Sans", sans-serif', lineHeight: 1.5, fontWeight: 400 }}>
-          Azure AI Foundry<br />GitHub Models
+          Azure Foundry<br />GitHub Models
         </div>
         <a
           href="https://github.com"

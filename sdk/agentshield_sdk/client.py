@@ -1,6 +1,6 @@
 """
 AgentShield Python SDK
-Drop-in security wrapper for any AI agent pipeline.
+Drop-in security wrapper for any agent pipeline.
 """
 
 import httpx
@@ -60,7 +60,7 @@ class OutputScanResult:
 
 class AgentShield:
     """
-    AgentShield client — wrap any agent call with one line.
+    AgentShield client: wrap any agent call with one line.
 
     Example:
         shield = AgentShield()
@@ -124,7 +124,7 @@ class AgentShield:
 
     def scan_output(self, text: str, redact: bool = True) -> "OutputScanResult":
         """
-        Bidirectional protection — scan an AGENT OUTPUT for leaked secrets,
+        Bidirectional protection: scan an AGENT OUTPUT for leaked secrets,
         PII, and financial data before transmitting it to the user.
         """
         resp = self._client.post("/api/scan/output", json={"text": text, "redact": redact})

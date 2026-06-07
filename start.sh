@@ -1,5 +1,5 @@
 #!/bin/bash
-# AgentShield — One-command startup
+# AgentShield one-command startup
 
 set -e
 RESET='\033[0m'; BOLD='\033[1m'; CYAN='\033[0;36m'; GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[1;33m'
@@ -7,7 +7,7 @@ RESET='\033[0m'; BOLD='\033[1m'; CYAN='\033[0;36m'; GREEN='\033[0;32m'; RED='\03
 echo -e "${BOLD}${CYAN}"
 echo "   ┌─────────────────────────────────────┐"
 echo "   │   AgentShield  🛡️   v1.0.0          │"
-echo "   │   AI Agent Security Platform         │"
+echo "   │   Agent Security Platform            │"
 echo "   └─────────────────────────────────────┘"
 echo -e "${RESET}"
 
@@ -24,7 +24,7 @@ fi
 source .env 2>/dev/null || true
 
 echo -e "${GREEN}[2/3] Starting AgentShield API on :8000...${RESET}"
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload &
+python3 run_server.py &
 BACKEND_PID=$!
 cd ..
 

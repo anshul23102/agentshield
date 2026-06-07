@@ -99,7 +99,7 @@ export default function Simulator() {
 
               {/* Demo chips */}
               <div>
-                <div style={{ fontSize: 10, color: 'var(--t3)', letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 12, fontWeight: 600, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                <div style={{ fontSize: 10, color: '#98989D', letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 12, fontWeight: 600, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
                   Preloaded Scenarios
                 </div>
                 <div className="grid grid-cols-2 gap-2.5">
@@ -112,7 +112,7 @@ export default function Simulator() {
                         background: 'rgba(255, 255, 255, 0.03)',
                         border: '1px solid rgba(255, 255, 255, 0.12)',
                         fontSize: 11.5,
-                        color: 'var(--t1)',
+                        color: '#FFFFFF',
                         transition: 'all 0.2s cubic-bezier(0.25, 0, 0, 1)',
                         backdropFilter: 'blur(12px)',
                         fontFamily: '"Plus Jakarta Sans", sans-serif',
@@ -127,7 +127,7 @@ export default function Simulator() {
                       }}
                       onMouseLeave={e => {
                         e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.12)'
-                        e.currentTarget.style.color = 'var(--t1)'
+                        e.currentTarget.style.color = '#FFFFFF'
                         e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)'
                         e.currentTarget.style.boxShadow = 'none'
                       }}
@@ -221,7 +221,7 @@ export default function Simulator() {
                       {/* Verdict */}
                       <div>
                         <div className="flex items-center justify-between p-6 rounded-2xl animate-fadeUp"
-                          style={{ background: 'var(--card)', border: `1px solid ${a.border}`, boxShadow: `0 8px 30px rgba(0,0,0,0.3)` }}>
+                          style={{ background: 'rgba(20, 20, 20, 0.7)', border: `1px solid ${a.border}`, boxShadow: `0 8px 30px rgba(0,0,0,0.3)` }}>
                           <div className="flex items-center gap-4">
                             <Icon size={24} color={a.color} style={{ filter: `drop-shadow(0 0 6px ${a.color})` }} />
                             <div>

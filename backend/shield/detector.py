@@ -274,7 +274,7 @@ class ThreatDetector:
         if llm_result and llm_result.is_threat:
             reasoning_parts.append(f"LLM: {llm_result.reasoning}")
         if not reasoning_parts:
-            reasoning_parts.append("No threats detected — input appears safe")
+            reasoning_parts.append("No threats detected. Input appears safe")
 
         reasoning = " | ".join(reasoning_parts)
 

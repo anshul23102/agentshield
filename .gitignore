@@ -10,7 +10,7 @@ dist/
 build/
 *.egg
 
-# Environment — NEVER commit
+# Environment: never commit
 backend/.env
 .env
 .env.*

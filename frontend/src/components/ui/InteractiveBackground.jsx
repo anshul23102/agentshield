@@ -11,16 +11,20 @@ export default function InteractiveBackground() {
   useEffect(() => {
     const handleMouseMove = (e) => {
       if (!containerRef.current) return
-      containerRef.current.style.setProperty('--mouse-x', `${e.clientX}px`)
-      containerRef.current.style.setProperty('--mouse-y', `${e.clientY}px`)
+      containerRef.current.style.background = `
+        radial-gradient(circle 800px at ${e.clientX}px ${e.clientY}px, rgba(0, 113, 227, 0.08) 0%, rgba(175, 82, 222, 0.03) 45%, transparent 85%),
+        #050505
+      `
     }
 
     window.addEventListener('mousemove', handleMouseMove, { passive: true })
 
-    // Initialize to center
+    // Initialize to center.
     if (containerRef.current) {
-      containerRef.current.style.setProperty('--mouse-x', '50%')
-      containerRef.current.style.setProperty('--mouse-y', '50%')
+      containerRef.current.style.background = `
+        radial-gradient(circle 800px at 50% 50%, rgba(0, 113, 227, 0.08) 0%, rgba(175, 82, 222, 0.03) 45%, transparent 85%),
+        #050505
+      `
     }
 
     return () => {
@@ -36,10 +40,7 @@ export default function InteractiveBackground() {
         inset: 0,
         pointerEvents: 'none',
         zIndex: 0,
-        background: `
-          radial-gradient(circle 800px at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(0, 113, 227, 0.08) 0%, rgba(175, 82, 222, 0.03) 45%, transparent 85%),
-          #050505
-        `,
+        background: '#050505',
         transition: 'background 0.12s cubic-bezier(0.16, 1, 0.3, 1)'
       }}
     />

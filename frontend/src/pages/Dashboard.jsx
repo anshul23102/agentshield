@@ -56,7 +56,7 @@ function FeedRow({ ev, i }) {
   const color  = colors[ev.action] || '#86868b'
   const ts = ev.timestamp
     ? new Date(ev.timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-    : '—'
+    : '-'
 
   return (
     <motion.div
@@ -79,7 +79,7 @@ function FeedRow({ ev, i }) {
 
       {/* Preview */}
       <span style={{ fontSize: 12, color: '#f5f5f7', fontFamily: '"Plus Jakarta Sans", sans-serif', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 400 }}>
-        {ev.input_preview || ev.threat_category || '—'}
+        {ev.input_preview || ev.threat_category || '-'}
       </span>
 
       {/* Score */}
@@ -185,7 +185,7 @@ export default function Dashboard() {
     <div className="h-full flex flex-col overflow-hidden">
       <Header
         title="Dashboard"
-        subtitle="Bidirectional threat monitoring — inputs and outputs"
+        subtitle="Bidirectional threat monitoring: inputs and outputs"
         wsConnected={wsConn}
       />
 
@@ -213,7 +213,7 @@ export default function Dashboard() {
           <KPI
             value={`${blockRate}%`}
             label="Block Rate"
-            sub={status?.llm_provider === 'github_models' ? 'LLM: GitHub AI' : 'LLM: pattern-only'}
+            sub={status?.llm_provider === 'github_models' ? 'LLM: GitHub Models' : 'LLM: pattern-only'}
             valueColor={blockRate > 20 ? '#ff3b30' : '#f5f5f7'}
             delay={0.24}
           />
@@ -265,7 +265,7 @@ export default function Dashboard() {
             </div>
           </motion.div>
 
-          {/* Live feed — takes most of the space */}
+          {/* Live feed takes most of the space */}
           <motion.div
             initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}
             className="col-span-3 card p-5"
@@ -305,7 +305,7 @@ export default function Dashboard() {
                 ) : (
                   <div className="flex flex-col items-center justify-center py-16" style={{ color: '#86868b' }}>
                     <Shield size={28} style={{ marginBottom: 12, opacity: 0.3 }} />
-                    <p style={{ fontSize: 12, fontFamily: '"Plus Jakarta Sans", sans-serif', fontWeight: 300 }}>No events yet — run the Simulator</p>
+                    <p style={{ fontSize: 12, fontFamily: '"Plus Jakarta Sans", sans-serif', fontWeight: 300 }}>No events yet. Run the Simulator</p>
                   </div>
                 )}
               </AnimatePresence>
@@ -347,7 +347,7 @@ export default function Dashboard() {
               >
                 <div>
                   <div style={{ fontSize: 12.5, fontWeight: 600, color: '#ffffff', fontFamily: '"Plus Jakarta Sans", sans-serif' }}>Demo Traffic Generator</div>
-                  <div style={{ fontSize: 10.5, color: 'var(--t2)', marginTop: 3, fontWeight: 400, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>Simulates live events every 10-15s</div>
+                  <div style={{ fontSize: 10.5, color: '#D1D1D6', marginTop: 3, fontWeight: 400, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>Simulates live events every 10 to 15s</div>
                 </div>
                 <div className="flex items-center gap-2">
                   <span style={{ 
@@ -425,32 +425,32 @@ export default function Dashboard() {
             <div className="p-4 rounded-xl" style={{ background: 'rgba(5, 5, 5, 0.4)', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
               <div className="space-y-3.5">
                 <div className="flex items-center justify-between text-xs font-sans">
-                  <span style={{ color: 'var(--t2)', fontWeight: 400 }}>Active LLM Provider</span>
+                  <span style={{ color: '#D1D1D6', fontWeight: 400 }}>Active LLM Provider</span>
                   <span style={{ color: '#ffffff', fontWeight: 600, fontFamily: 'monospace' }}>
                     {status?.llm_provider === 'github_models' ? 'GitHub Models (gpt-4o-mini)' : 
                      status?.llm_provider === 'groq' ? 'Groq (llama-3.1-8b)' : 'Pattern-Only Mode'}
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-xs font-sans">
-                  <span style={{ color: 'var(--t2)', fontWeight: 400 }}>Active WebSocket Streams</span>
+                  <span style={{ color: '#D1D1D6', fontWeight: 400 }}>Active WebSocket Streams</span>
                   <span style={{ color: '#30d158', fontWeight: 600, fontFamily: 'monospace' }}>
                     {status?.ws_clients || 1} Connected (Active)
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-xs font-sans">
-                  <span style={{ color: 'var(--t2)', fontWeight: 400 }}>Database Health</span>
+                  <span style={{ color: '#D1D1D6', fontWeight: 400 }}>Database Health</span>
                   <span style={{ color: '#30d158', fontWeight: 600, fontFamily: 'monospace' }}>
                     SQLite / aiosqlite (Healthy)
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-xs font-sans">
-                  <span style={{ color: 'var(--t2)', fontWeight: 400 }}>LLM Analysis Cache Size</span>
+                  <span style={{ color: '#D1D1D6', fontWeight: 400 }}>LLM Analysis Cache Size</span>
                   <span style={{ color: '#ffffff', fontWeight: 600, fontFamily: 'monospace' }}>
                     {adminConfig.llm_cache_size} Entries
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-xs font-sans">
-                  <span style={{ color: 'var(--t2)', fontWeight: 400 }}>Memory Session Count</span>
+                  <span style={{ color: '#D1D1D6', fontWeight: 400 }}>Memory Session Count</span>
                   <span style={{ color: '#ffffff', fontWeight: 600, fontFamily: 'monospace' }}>
                     {adminConfig.total_active_sessions} Sessions
                   </span>

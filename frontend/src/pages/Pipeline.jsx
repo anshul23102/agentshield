@@ -13,7 +13,7 @@ const NODES = [
   { id: 2, name: 'Semantic Guard', role: 'Heuristic Check', icon: Search, x: 360, y: 270, desc: 'Executes lightweight keyword list taxonomy evaluation and semantic context search to catch obfuscation.' },
   { id: 3, name: 'LLM Guard', role: 'Deep Analysis', icon: Brain, x: 500, y: 130, desc: 'Leverages high-performance LLM agent logic to run deep safety check analysis on complex prompts.' },
   { id: 4, name: 'Session Guard', role: 'Behavior Tracker', icon: Activity, x: 640, y: 270, desc: 'Monitors historical prompt patterns, rate limit compliance, and cumulative session threat escalation.' },
-  { id: 5, name: 'AI Agent Core', role: 'Agent Logic', icon: Cpu, x: 780, y: 200, desc: 'Executes the core enterprise agent loop, including tool execution and Azure AI model generation.' },
+  { id: 5, name: 'Agent Core', role: 'Agent Logic', icon: Cpu, x: 780, y: 200, desc: 'Executes the core enterprise agent loop, including tool execution and Azure model generation.' },
   { id: 6, name: 'Output Guard', role: 'Leak Protection', icon: EyeOff, x: 920, y: 200, desc: 'Scans outgoing agent responses for credentials, secrets (API keys), and PII, redacting leaks in real time.' },
   { id: 7, name: 'Safe Response', role: 'Delivery Interface', icon: ShieldCheck, x: 1050, y: 200, desc: 'Transmits sanitized, validated, and redacted output payloads back to the client application.' },
 ]
@@ -264,7 +264,7 @@ export default function Pipeline() {
                 <div className="flex items-center gap-2">
                   <div className={`live-dot ${connected ? 'bg-[#30d158]' : 'bg-[#ff9f0a]'}`} />
                   <span className="text-[11px] font-semibold text-[#86868b] tracking-wider uppercase">
-                    {connected ? 'WS CONNECTED — RECEIVING REAL-TIME EVENTS' : 'WS CONNECTING...'}
+                    {connected ? 'WS CONNECTED: RECEIVING REAL-TIME EVENTS' : 'WS CONNECTING...'}
                   </span>
                 </div>
                 {simulationState !== 'idle' && (

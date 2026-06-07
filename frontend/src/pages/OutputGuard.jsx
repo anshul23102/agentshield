@@ -54,7 +54,7 @@ export default function OutputGuard() {
     <div className="h-full flex flex-col overflow-hidden">
       <Header
         title="Output Guard"
-        subtitle="Bidirectional protection — scans what your agent sends back"
+        subtitle="Bidirectional protection: scans what your agent sends back"
         right={stats && (
           <div style={{ fontSize: 11, color: '#86868b', fontFamily: '"Plus Jakarta Sans", sans-serif', fontWeight: 500 }}>
             {stats.total} leak signatures loaded
@@ -70,7 +70,7 @@ export default function OutputGuard() {
             {[
               { label: 'User Input', color: '#86868b' },
               { label: 'Input Guard', color: '#0071e3', activeBorder: 'rgba(0, 113, 227, 0.3)', shadow: '0 0 10px rgba(0, 113, 227, 0.15)' },
-              { label: 'AI Agent', color: '#86868b' },
+              { label: 'Agent Core', color: '#86868b' },
               { label: 'Output Guard', color: '#30d158', active: true, activeBorder: 'rgba(48, 209, 88, 0.3)', shadow: '0 0 12px rgba(48, 209, 88, 0.2)' },
               { label: 'Safe Response', color: '#f5f5f7', activeBorder: 'rgba(255,255,255,0.08)' },
             ].map((step, i, arr) => (
@@ -89,7 +89,7 @@ export default function OutputGuard() {
             ))}
             <p style={{ fontSize: 11, color: '#86868b', marginLeft: 'auto', maxWidth: 280, textAlign: 'right', lineHeight: 1.6, fontWeight: 300, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
               Most defenses only guard what goes <em style={{ color: '#0071e3', fontStyle: 'normal', fontWeight: 500 }}>in</em>. AgentShield also
-              guards what comes <em style={{ color: '#30d158', fontStyle: 'normal', fontWeight: 500 }}>out</em> — blocking data exfiltration.
+              guards what comes <em style={{ color: '#30d158', fontStyle: 'normal', fontWeight: 500 }}>out</em>, blocking data exfiltration.
             </p>
             <div style={{ fontSize: 11, color: '#86868b', width: '100%', marginTop: 12, lineHeight: 1.5, borderTop: '1px solid rgba(255, 255, 255, 0.06)', paddingTop: 10, fontFamily: '"Plus Jakarta Sans", sans-serif', fontWeight: 300 }}>
               Verifies agent outputs before delivery. Prevents data exfiltration, system prompt leakage, and exposed API credentials.
@@ -181,7 +181,7 @@ export default function OutputGuard() {
                     {/* Verdict */}
                     <div>
                       <div className="card p-6 flex items-center justify-between"
-                        style={{ borderColor: result.is_safe ? 'rgba(52,199,89,0.2)' : 'rgba(255,59,48,0.2)', background: 'var(--card)' }}>
+                        style={{ borderColor: result.is_safe ? 'rgba(52,199,89,0.2)' : 'rgba(255,59,48,0.2)', background: 'rgba(20, 20, 20, 0.7)' }}>
                         <div>
                           <div style={{ fontFamily: '"Outfit", "-apple-system", sans-serif', fontSize: 20, fontWeight: 600, color: result.is_safe ? '#30d158' : '#ff453a', letterSpacing: '-0.02em' }}>
                             {result.is_safe ? 'PAYLOAD CLEAN' : `${result.leaks_found.length} DATA LEAKS REDACTED`}

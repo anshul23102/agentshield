@@ -74,7 +74,7 @@ export default function Landing() {
               className="text-[64px] md:text-[96px] font-bold text-[#1D1D1F] leading-[1.05] tracking-[-0.035em] max-w-[1000px] mx-auto"
               style={{ fontFamily: '"Outfit", -apple-system, BlinkMacSystemFont, sans-serif' }}
             >
-              Zero trust for AI agents.
+              Zero trust for autonomous agents.
             </h1>
             <p 
               className="text-[20px] md:text-[24px] text-[#86868b] max-w-[620px] mx-auto font-light leading-relaxed"
@@ -298,7 +298,7 @@ export default function Landing() {
           </div>
           <div className="border-t border-black/[0.05] pt-8 flex flex-col md:flex-row items-center justify-between gap-4">
             <div>
-              &copy; {new Date().getFullYear()} AgentShield AI Platform. All rights reserved.
+              &copy; {new Date().getFullYear()} AgentShield Platform. All rights reserved.
             </div>
             <div className="flex gap-6">
               <span>Surgical Whitespace Grid</span>

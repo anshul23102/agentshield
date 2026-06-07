@@ -1,5 +1,5 @@
 """
-AgentShield Output Guard — Bidirectional Protection
+AgentShield Output Guard: bidirectional protection
 Scans AGENT OUTPUTS (not just inputs) for data exfiltration, leaked secrets,
 and PII before they ever leave the system. Includes a redaction engine.
 
@@ -101,7 +101,7 @@ LEAK_PATTERNS: list[LeakPattern] = [
     ),
     LeakPattern(
         id="SEC-PRIVKEY",
-        pattern=r"-----BEGIN (RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY-----",
+        pattern=r"-{5}BEGIN (RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY-{5}",
         leak_type=LeakType.SECRET, severity=LeakSeverity.CRITICAL,
         description="Private Key Block",
         redact_with="[PRIVATE_KEY_REDACTED]",
@@ -353,7 +353,7 @@ class OutputGuard:
             types = ", ".join(summary.keys())
             reasoning = f"Detected {len(leaks)} potential data leak(s): {types}. Output {'redacted' if redact else 'blocked'} before transmission."
         else:
-            reasoning = "No sensitive data detected — output is safe to transmit."
+            reasoning = "No sensitive data detected. Output is safe to transmit."
 
         return OutputScanResult(
             is_safe=(len(leaks) == 0),

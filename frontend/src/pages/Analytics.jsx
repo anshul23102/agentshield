@@ -60,7 +60,7 @@ export default function Analytics() {
   const kpis = [
     { label: 'Total Inspected', value: total.toLocaleString() },
     { label: 'Block Rate',      value: `${blockRate}%`,        color: '#ff3b30' },
-    { label: 'Detection Rate',  value: total > 0 ? `${(((blocked+warned)/total)*100).toFixed(1)}%` : '—', color: '#ff9500' },
+    { label: 'Detection Rate',  value: total > 0 ? `${(((blocked+warned)/total)*100).toFixed(1)}%` : '-', color: '#ff9500' },
     { label: 'Avg Trust Score', value: avgScore,               color: avgScore > 70 ? '#34c759' : '#ff9500' },
   ]
 

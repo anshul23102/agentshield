@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 
 /**
- * Minimal dot cursor — 4px white circle that follows the mouse exactly.
+ * Minimal dot cursor: 4px white circle that follows the mouse exactly.
  * Grows slightly over interactive elements. No ring, no glow, no lag.
  * Inspired by enzo-casalini.dev's precision-first approach.
  */

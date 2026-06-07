@@ -1,5 +1,5 @@
 /**
- * Film grain / noise overlay — the signature texture of premium award-winning sites.
+ * Film grain and noise overlay for premium texture.
  * SVG fractal noise rendered as a fixed full-screen layer with screen blend mode.
  */
 export default function GrainOverlay() {

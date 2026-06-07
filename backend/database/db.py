@@ -1,6 +1,6 @@
 """
 AgentShield Database Layer
-SQLite with aiosqlite — zero-config, async, production-suitable for prototype scale.
+SQLite with aiosqlite for async prototype-scale persistence.
 """
 
 import json

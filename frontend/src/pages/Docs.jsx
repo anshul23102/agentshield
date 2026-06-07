@@ -49,11 +49,11 @@ export default function Docs() {
 
           <Section title="Quick Start" delay={0}>
             <Code lang="bash" code={`# 1. Start the backend
-cd backend && uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+cd backend && python run_server.py
 
-# 2. Get a free API key (optional — enables LLM deep analysis)
+# 2. Get a free API key (optional, enables LLM deep analysis)
 # GitHub Models: github.com/settings/tokens (no scopes needed)
-# Add to backend/.env → GITHUB_TOKEN=ghp_xxxxxx
+# Add to backend/.env with GITHUB_TOKEN=ghp_xxxxxx
 
 # 3. Start the dashboard
 cd frontend && npm run dev`} />
@@ -91,22 +91,22 @@ cd frontend && npm run dev`} />
 
 shield = AgentShield(base_url="http://localhost:8000")
 
-# ── INPUT: block attacks before they reach the agent ──
+# INPUT: block attacks before they reach the agent
 verdict = shield.inspect(user_input)
 if not verdict.is_safe:
     return f"Blocked ({verdict.action}): {verdict.reasoning}"
 
-# ── Run your agent ────────────────────────────────────
+# Run your agent
 raw_response = your_agent.run(user_input)
 
-# ── OUTPUT: redact secrets/PII before they leave ─────
+# OUTPUT: redact secrets and PII before they leave
 scan = shield.scan_output(raw_response)
 return scan.redacted_text   # secrets automatically masked`} />
           </Section>
 
           <Section title="Multi-Turn Session Tracking" delay={0.1}>
             <p style={{ fontSize: 13, color: '#86868b', lineHeight: 1.7, fontFamily: '"Plus Jakarta Sans", sans-serif', fontWeight: 300 }}>
-              Session context enables Layer 4 behavioral analysis — detecting escalating
+              Session context enables Layer 4 behavioral analysis, detecting escalating
               multi-step attacks that look innocent one turn at a time.
             </p>
             <Code lang="python" code={`from agentshield_sdk import AgentShield, ShieldedSession
@@ -127,13 +127,13 @@ with ShieldedSession(shield, session_id="user-123") as sess:
           <Section title="REST API Reference" delay={0.15}>
             <div className="space-y-4">
               {[
-                { method: 'POST', path: '/api/inspect',      color: '#0071e3', desc: 'Inspect a prompt — full 4-layer input detection' },
+                { method: 'POST', path: '/api/inspect',      color: '#0071e3', desc: 'Inspect a prompt with full 4-layer input detection' },
                 { method: 'POST', path: '/api/inspect/batch',color: '#0071e3', desc: 'Batch inspect up to 50 prompts (parallel async)' },
-                { method: 'POST', path: '/api/scan/output',  color: '#30d158', desc: 'Scan agent output — 23 data-leak signatures + redaction' },
+                { method: 'POST', path: '/api/scan/output',  color: '#30d158', desc: 'Scan agent output with 23 data-leak signatures plus redaction' },
                 { method: 'GET',  path: '/api/analytics',    color: '#ff9f0a', desc: 'Full analytics: totals, categories, daily trend, hourly' },
                 { method: 'GET',  path: '/api/patterns',     color: '#ff9f0a', desc: 'Browse the input attack pattern database' },
                 { method: 'GET',  path: '/api/output/patterns', color: '#ff9f0a', desc: 'Browse the output data-leak signature database' },
-                { method: 'WS',   path: '/ws/live',          color: '#af52de', desc: 'WebSocket — real-time threat event stream' },
+                { method: 'WS',   path: '/ws/live',          color: '#af52de', desc: 'WebSocket real-time threat event stream' },
               ].map((e, i) => (
                 <div key={i} className="flex items-start gap-4 p-5 rounded-2xl" style={{ background: 'rgba(255,255,255,0.01)', border: '1px solid rgba(255,255,255,0.06)' }}>
                   <span style={{ fontSize: 10, fontFamily: 'monospace', fontWeight: 600, color: e.color, flexShrink: 0, padding: '3px 9px', background: `${e.color}10`, borderRadius: 6, border: `1px solid ${e.color}25`, marginTop: 1 }}>

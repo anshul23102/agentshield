@@ -50,7 +50,7 @@ export default function LoadingScreen({ onComplete }) {
               AgentShield
             </div>
             <div style={{ fontSize: 11, letterSpacing: '0.12em', color: '#86868b', textTransform: 'uppercase', marginTop: 8, fontWeight: 500 }}>
-              AI Agent Security Platform
+              Agent Security Platform
             </div>
           </motion.div>
 

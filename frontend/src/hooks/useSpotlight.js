@@ -2,8 +2,7 @@ import { useEffect } from 'react'
 
 /**
  * Adds a cursor-following radial spotlight to any element with the
- * `.spotlight-card` class — a subtle premium hover effect.
- * Updates CSS custom properties --mx / --my used by the .spotlight-card style.
+ * `.spotlight-card` class for a subtle premium hover effect.
  */
 export function useSpotlight() {
   useEffect(() => {
@@ -13,13 +12,12 @@ export function useSpotlight() {
         const rect = card.getBoundingClientRect()
         const x = e.clientX - rect.left
         const y = e.clientY - rect.top
-        // Only update if cursor is reasonably near the card (perf)
+        // Only update if cursor is reasonably near the card.
         if (
           x > -200 && x < rect.width + 200 &&
           y > -200 && y < rect.height + 200
         ) {
-          card.style.setProperty('--mx', `${x}px`)
-          card.style.setProperty('--my', `${y}px`)
+          card.style.backgroundImage = `radial-gradient(circle at ${x}px ${y}px, rgba(255,255,255,0.08), transparent 36%)`
         }
       })
     }
