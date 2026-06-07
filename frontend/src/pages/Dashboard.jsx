@@ -1,20 +1,39 @@
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Shield, TrendingUp, Activity, Settings, Trash2, Database, Sliders } from 'lucide-react'
 import {
-  AreaChart, Area, XAxis, YAxis, Tooltip,
-  ResponsiveContainer, CartesianGrid,
+  Activity,
+  Database,
+  RadioTower,
+  Settings,
+  Shield,
+  Sliders,
+  Trash2,
+  TrendingUp,
+} from 'lucide-react'
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  CartesianGrid,
 } from 'recharts'
 import Header from '../components/layout/Header'
 import { useWebSocket } from '../hooks/useWebSocket'
-import { 
-  getAnalytics, getStatus, getRecentEvents, 
-  getAdminConfig, toggleDemoTraffic, clearLLMCache, resetSessions 
+import {
+  getAnalytics,
+  getStatus,
+  getRecentEvents,
+  getAdminConfig,
+  toggleDemoTraffic,
+  clearLLMCache,
+  resetSessions,
 } from '../utils/api'
 
-/* ── Animated counter ── */
 function Count({ to, suffix = '' }) {
   const [val, setVal] = useState(0)
+
   useEffect(() => {
     if (!to) return
     const n = parseInt(to) || 0
@@ -27,35 +46,73 @@ function Count({ to, suffix = '' }) {
     }, 25)
     return () => clearInterval(id)
   }, [to])
+
   return <>{val.toLocaleString()}{suffix}</>
 }
 
-/* ── KPI card ── */
-function KPI({ value, label, sub, valueColor = '#f5f5f7', delay = 0 }) {
+function MetricCard({ label, value, color, delay = 0, selected = false, onClick }) {
+  return (
+    <motion.button
+      type="button"
+      onClick={onClick}
+      initial={{ opacity: 0, y: 14 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay, duration: 0.42 }}
+      className="card p-4"
+      style={{
+        minHeight: 132,
+        width: '100%',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        textAlign: 'center',
+        borderColor: selected ? `${color}80` : 'rgba(255, 255, 255, 0.11)',
+        boxShadow: selected ? `0 0 26px ${color}24, inset 0 1px 0 rgba(255,255,255,0.12)` : undefined,
+        cursor: 'pointer',
+        background: selected
+          ? `linear-gradient(145deg, ${color}18, rgba(255,255,255,0.04)), rgba(15,15,16,0.72)`
+          : undefined,
+      }}
+    >
+      <div>
+        <div className="stat-num" style={{ fontSize: 44, lineHeight: 1, color, fontWeight: 800, fontFamily: '"Outfit", sans-serif' }}>
+          {typeof value === 'number' ? <Count to={value} /> : value}
+        </div>
+        <div style={{ marginTop: 14, fontSize: 11.5, color: '#D1D1D6', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 800, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+          {label}
+        </div>
+      </div>
+    </motion.button>
+  )
+}
+
+function InsightCard({ title, body, color, delay = 0 }) {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 12 }}
+      initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay, duration: 0.4 }}
-      className="card p-6"
+      transition={{ delay, duration: 0.35 }}
+      className="card-flat p-3"
+      style={{ minHeight: 84 }}
     >
-      <div style={{ fontSize: 11, color: '#86868b', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12, fontWeight: 500, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
-        {label}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+        <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, boxShadow: `0 0 14px ${color}` }} />
+        <span style={{ color: '#ffffff', fontSize: 13, fontWeight: 700, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+          {title}
+        </span>
       </div>
-      <div className="stat-num" style={{ fontSize: 38, color: valueColor, fontWeight: 600, fontFamily: '"Outfit", sans-serif' }}>
-        {typeof value === 'number' ? <Count to={value} /> : value}
-      </div>
-      {sub && <div style={{ fontSize: 11, color: '#86868b', marginTop: 6, fontWeight: 300, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>{sub}</div>}
+      <p style={{ color: '#D1D1D6', fontSize: 11.5, lineHeight: 1.45, marginTop: 7, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+        {body}
+      </p>
     </motion.div>
   )
 }
 
-/* ── Threat feed row ── */
 function FeedRow({ ev, i }) {
-  const colors = { block: '#ff3b30', warn: '#ff9500', allow: '#34c759' }
-  const color  = colors[ev.action] || '#86868b'
+  const colors = { block: '#ff453a', warn: '#ff9f0a', allow: '#30d158' }
+  const color = colors[ev.action] || '#86868b'
   const ts = ev.timestamp
-    ? new Date(ev.timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    ? new Date(ev.timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     : '-'
 
   return (
@@ -66,29 +123,17 @@ function FeedRow({ ev, i }) {
       className="threat-row"
       style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}
     >
-      {/* Status dot with pulsing effect */}
-      <div style={{
-        width: 6, height: 6, borderRadius: '50%', background: color, flexShrink: 0,
-        boxShadow: `0 0 8px ${color}`
-      }} />
-
-      {/* Badge */}
-      <span className={`badge badge-${ev.action}`} style={{ flexShrink: 0, fontFamily: '"Plus Jakarta Sans", sans-serif', fontWeight: 500 }}>
+      <div style={{ width: 7, height: 7, borderRadius: '50%', background: color, flexShrink: 0, boxShadow: `0 0 10px ${color}` }} />
+      <span className={`badge badge-${ev.action}`} style={{ width: 62, justifyContent: 'center' }}>
         {ev.action}
       </span>
-
-      {/* Preview */}
-      <span style={{ fontSize: 12, color: '#f5f5f7', fontFamily: '"Plus Jakarta Sans", sans-serif', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 400 }}>
+      <span style={{ fontSize: 12, color: '#ffffff', fontFamily: '"Plus Jakarta Sans", sans-serif', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500 }}>
         {ev.input_preview || ev.threat_category || '-'}
       </span>
-
-      {/* Score */}
-      <span style={{ fontSize: 12, fontFamily: 'monospace', color, flexShrink: 0, fontWeight: 600 }}>
+      <span style={{ fontSize: 12, fontFamily: 'monospace', color, flexShrink: 0, fontWeight: 700 }}>
         {ev.trust_score}
       </span>
-
-      {/* Time */}
-      <span style={{ fontSize: 11, color: '#86868b', fontFamily: '"Plus Jakarta Sans", sans-serif', flexShrink: 0, fontWeight: 300 }}>
+      <span style={{ fontSize: 11, color: '#D1D1D6', fontFamily: '"Plus Jakarta Sans", sans-serif', width: 54, textAlign: 'right' }}>
         {ts}
       </span>
     </motion.div>
@@ -97,21 +142,28 @@ function FeedRow({ ev, i }) {
 
 export default function Dashboard() {
   const [analytics, setAnalytics] = useState(null)
-  const [status,    setStatus]    = useState(null)
-  const [feed,      setFeed]      = useState([])
-  const [wsConn,    setWsConn]    = useState(false)
+  const [status, setStatus] = useState(null)
+  const [feed, setFeed] = useState([])
+  const [wsConn, setWsConn] = useState(false)
   const [adminConfig, setAdminConfig] = useState({ demo_traffic_enabled: true, llm_cache_size: 0, total_active_sessions: 0 })
   const [toast, setToast] = useState(null)
+  const [selectedMetric, setSelectedMetric] = useState('total')
 
   const { connected } = useWebSocket((msg) => {
     setWsConn(true)
-    if (msg.type === 'threat_event') setFeed(p => [msg, ...p].slice(0, 80))
+    if (msg.type === 'threat_event') setFeed(p => [msg, ...p].slice(0, 60))
     if (msg.type === 'init' && msg.recent_events) setFeed(msg.recent_events)
   })
+
   useEffect(() => setWsConn(connected), [connected])
 
   const refreshAdmin = () => {
     getAdminConfig().then(setAdminConfig).catch(() => {})
+  }
+
+  const showToast = (message, type) => {
+    setToast({ message, type })
+    setTimeout(() => setToast(null), 3000)
   }
 
   const handleToggleTraffic = async () => {
@@ -144,13 +196,8 @@ export default function Dashboard() {
     }
   }
 
-  const showToast = (message, type) => {
-    setToast({ message, type })
-    setTimeout(() => setToast(null), 3000)
-  }
-
   useEffect(() => {
-    Promise.all([getAnalytics(), getStatus(), getRecentEvents(40)])
+    Promise.all([getAnalytics(), getStatus(), getRecentEvents(30)])
       .then(([a, s, e]) => {
         setAnalytics(a)
         setStatus(s)
@@ -165,343 +212,435 @@ export default function Dashboard() {
     return () => clearInterval(id)
   }, [])
 
-  const t     = analytics?.totals || {}
-  const total = parseInt(t.total)  || 0
+  const t = analytics?.totals || {}
+  const total = parseInt(t.total) || 0
   const blocked = parseInt(t.blocked) || 0
-  const warned  = parseInt(t.warned)  || 0
+  const warned = parseInt(t.warned) || 0
   const allowed = parseInt(t.allowed) || 0
-  const avg   = t.avg_score ? Math.round(t.avg_score) : 100
+  const avg = t.avg_score ? Math.round(t.avg_score) : 100
+  const blockRate = total > 0 ? Math.round((blocked / total) * 100) : 0
+  const reviewRate = total > 0 ? Math.round(((blocked + warned) / total) * 100) : 0
+  const safeRate = total > 0 ? Math.round((allowed / total) * 100) : 100
+  const postureColor = avg > 70 ? '#30d158' : avg > 40 ? '#ff9f0a' : '#ff453a'
+  const postureLabel = avg > 70 ? 'Stable' : avg > 40 ? 'Watchful' : 'High risk'
+  const summaryText = avg > 70
+    ? 'Most inspected traffic is passing cleanly, with the guard still watching for spikes.'
+    : avg > 40
+      ? 'Traffic is mixed. The guard is catching meaningful risk and the session deserves attention.'
+      : 'Risk is concentrated. Blocks are high enough that the agent path should be reviewed.'
+  const metricDetails = {
+    total: {
+      title: 'Total inspected',
+      color: '#ffffff',
+      body: `${total.toLocaleString()} requests were checked by the guard in this session.`,
+      detail: 'This is the traffic volume behind every other dashboard figure.',
+    },
+    block: {
+      title: 'Block rate',
+      color: '#ff453a',
+      body: `${blockRate}% of inspected requests were stopped before reaching the agent.`,
+      detail: 'A high block rate means the guard is seeing prompts with clear policy or security risk.',
+    },
+    detection: {
+      title: 'Detection rate',
+      color: '#ff9f0a',
+      body: `${reviewRate}% of traffic triggered either a warning or a block.`,
+      detail: 'This captures the full attention queue, including borderline prompts that need review.',
+    },
+    trust: {
+      title: 'Average trust score',
+      color: postureColor,
+      body: `${avg} out of 100 is the current trust average across inspected traffic.`,
+      detail: 'Higher scores mean cleaner prompts, fewer risky patterns, and healthier sessions.',
+    },
+  }
+  const activeMetric = metricDetails[selectedMetric] || metricDetails.total
+  const warningRate = total > 0 ? Math.round((warned / total) * 100) : 0
+  const trafficMix = [
+    { label: 'Blocked', value: blocked, rate: blockRate, color: '#ff453a' },
+    { label: 'Warned', value: warned, rate: warningRate, color: '#ff9f0a' },
+    { label: 'Allowed', value: allowed, rate: safeRate, color: '#30d158' },
+  ]
 
   const daily = (analytics?.daily_trend || []).reverse().map(d => ({
     date: d.date?.slice(5),
     blocked: d.blocked || 0,
-    warned:  d.warned  || 0,
+    warned: d.warned || 0,
     allowed: d.allowed || 0,
   }))
-
-  const blockRate = total > 0 ? Math.round((blocked / total) * 100) : 0
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
       <Header
         title="Dashboard"
-        subtitle="Bidirectional threat monitoring: inputs and outputs"
+        subtitle="Security posture, explained in plain language"
         wsConnected={wsConn}
       />
 
-      <div className="flex-1 overflow-y-auto p-8 pb-16">
-        <div className="max-w-[1200px] mx-auto space-y-8">
-
-        {/* ── KPIs ── */}
-        <div className="grid grid-cols-4 gap-4">
-          <KPI value={blocked}  label="Threats Blocked" valueColor="#ff3b30" delay={0}   />
-          <KPI value={warned}   label="Warnings"        valueColor="#ff9500" delay={0.05} />
-          <KPI value={allowed}  label="Safe Requests"   valueColor="#34c759" delay={0.10} />
-          <KPI
-            value={`${avg}`}
-            label="Avg Trust Score"
-            sub="/ 100"
-            valueColor={avg > 70 ? '#34c759' : avg > 40 ? '#ff9500' : '#ff3b30'}
-            delay={0.15}
-          />
-        </div>
-
-        {/* ── Secondary strip ── */}
-        <div className="grid grid-cols-3 gap-4">
-          <KPI value={status?.pattern_count || 54} label="Attack Signatures" sub="input + output guards" delay={0.2} />
-          <KPI value={total} label="Total Inspected" sub="this session" delay={0.22} />
-          <KPI
-            value={`${blockRate}%`}
-            label="Block Rate"
-            sub={status?.llm_provider === 'github_models' ? 'LLM: GitHub Models' : 'LLM: pattern-only'}
-            valueColor={blockRate > 20 ? '#ff3b30' : '#f5f5f7'}
-            delay={0.24}
-          />
-        </div>
-
-        {/* ── 7-day trend + Live feed ── */}
-        <div className="grid grid-cols-5 gap-6">
-
-          {/* Trend chart */}
+      <div className="flex-1 overflow-y-auto p-4 sm:p-5 lg:p-6 pb-12">
+        <div className="max-w-[1200px] mx-auto space-y-4">
           <motion.div
-            initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
-            className="col-span-2 card p-5"
-          >
-            <div className="section-header" style={{ marginBottom: 16, paddingBottom: 14, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-              <span style={{ fontFamily: '"Outfit", "-apple-system", sans-serif', fontSize: 13, fontWeight: 600, color: '#f5f5f7', letterSpacing: '-0.01em' }}>
-                7-Day Trend
-              </span>
-              <TrendingUp size={14} color="#0071e3" />
-            </div>
-            <ResponsiveContainer width="100%" height={180}>
-              <AreaChart data={daily}>
-                <defs>
-                  <linearGradient id="gBlock" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%"   stopColor="#ff3b30" stopOpacity={0.1} />
-                    <stop offset="100%" stopColor="#ff3b30" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
-                <XAxis dataKey="date" stroke="#86868b" fontSize={10} fontFamily='"Plus Jakarta Sans"' axisLine={false} tickLine={false} />
-                <YAxis stroke="#86868b" fontSize={10} fontFamily='"Plus Jakarta Sans"' axisLine={false} tickLine={false} />
-                <Tooltip
-                  contentStyle={{
-                    background: 'rgba(15, 15, 15, 0.85)',
-                    backdropFilter: 'blur(16px)',
-                    border: '1px solid rgba(255, 255, 255, 0.08)',
-                    borderRadius: '12px',
-                    fontFamily: '"Plus Jakarta Sans", sans-serif',
-                    fontSize: '11px',
-                    color: '#ffffff',
-                    boxShadow: '0 8px 30px rgba(0, 0, 0, 0.5)'
-                  }}
-                />
-                <Area type="monotone" dataKey="blocked" stroke="#ff3b30" fill="url(#gBlock)" strokeWidth={2} name="Blocked" />
-                <Area type="monotone" dataKey="warned"  stroke="#ff9500" fill="none"          strokeWidth={1.5} name="Warned" />
-              </AreaChart>
-            </ResponsiveContainer>
-            <div style={{ fontSize: 11, color: '#86868b', marginTop: 12, lineHeight: 1.5, borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 10, fontFamily: '"Plus Jakarta Sans", sans-serif', fontWeight: 300 }}>
-              Aggregated weekly timeline comparing blocked threat vectors against warning notifications. Use this to identify multi-day attack spikes.
-            </div>
-          </motion.div>
-
-          {/* Live feed takes most of the space */}
-          <motion.div
-            initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}
-            className="col-span-3 card p-5"
-          >
-            <div className="section-header" style={{ marginBottom: 16, paddingBottom: 14, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-              <div className="flex items-center gap-2">
-                <Activity size={14} color="#0071e3" />
-                <span style={{ fontFamily: '"Outfit", "-apple-system", sans-serif', fontSize: 13, fontWeight: 600, color: '#f5f5f7', letterSpacing: '-0.01em' }}>
-                  Live Threat Feed
-                </span>
-                <span className="live-dot" style={{ width: 5, height: 5 }} />
-              </div>
-              <span style={{ fontSize: 11, fontFamily: '"Plus Jakarta Sans", sans-serif', color: '#86868b', fontWeight: 400 }}>
-                {feed.length} events
-              </span>
-            </div>
-
-            {/* Column headers */}
-            <div className="flex items-center gap-3 pb-2.5 mb-1.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-              {['', 'Action', 'Input preview', 'Score', 'Time'].map((h, i) => (
-                <span key={i} style={{
-                  fontSize: 10, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#86868b',
-                  fontWeight: 500,
-                  fontFamily: '"Plus Jakarta Sans", sans-serif',
-                  flex: i === 2 ? 1 : 'none',
-                  width: i === 0 ? 6 : i === 1 ? 56 : i === 3 ? 36 : i === 4 ? 64 : 'auto',
-                }}>
-                  {h}
-                </span>
-              ))}
-            </div>
-
-            <div className="overflow-y-auto" style={{ maxHeight: 280 }}>
-              <AnimatePresence>
-                {feed.length > 0 ? (
-                  feed.map((ev, i) => <FeedRow key={`${ev.id}-${i}`} ev={ev} i={i} />)
-                ) : (
-                  <div className="flex flex-col items-center justify-center py-16" style={{ color: '#86868b' }}>
-                    <Shield size={28} style={{ marginBottom: 12, opacity: 0.3 }} />
-                    <p style={{ fontSize: 12, fontFamily: '"Plus Jakarta Sans", sans-serif', fontWeight: 300 }}>No events yet. Run the Simulator</p>
-                  </div>
-                )}
-              </AnimatePresence>
-            </div>
-            <div style={{ fontSize: 11, color: '#86868b', marginTop: 12, lineHeight: 1.5, borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 10, fontFamily: '"Plus Jakarta Sans", sans-serif', fontWeight: 300 }}>
-              Real-time stream of incoming agent inputs and outgoing payloads intercepted by the active layers. Pulsing indicators denote real-time mitigation actions.
-            </div>
-          </motion.div>
-        </div>
-
-        {/* ── System Operations & Diagnostics ── */}
-        <div className="grid grid-cols-5 gap-6">
-          
-          {/* Operations Panel */}
-          <motion.div
-            initial={{ opacity: 0, y: 12 }}
+            initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4, duration: 0.4 }}
-            className="col-span-2 card p-5"
-          >
-            <div className="section-header" style={{ marginBottom: 16, paddingBottom: 14, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-              <div className="flex items-center gap-2">
-                <Sliders size={14} color="#0071e3" />
-                <span style={{ fontFamily: '"Outfit", "-apple-system", sans-serif', fontSize: 13, fontWeight: 600, color: '#ffffff', letterSpacing: '-0.01em' }}>
-                  System Control Panel
-                </span>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              {/* Traffic toggle */}
-              <button
-                onClick={handleToggleTraffic}
-                className="flex items-center justify-between w-full p-3.5 rounded-xl transition-all duration-250 text-left hover:bg-[rgba(255,255,255,0.02)]"
-                style={{
-                  background: 'rgba(255,255,255,0.01)',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                }}
-              >
-                <div>
-                  <div style={{ fontSize: 12.5, fontWeight: 600, color: '#ffffff', fontFamily: '"Plus Jakarta Sans", sans-serif' }}>Demo Traffic Generator</div>
-                  <div style={{ fontSize: 10.5, color: '#D1D1D6', marginTop: 3, fontWeight: 400, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>Simulates live events every 10 to 15s</div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span style={{ 
-                    fontSize: 10.5, 
-                    fontWeight: 600, 
-                    color: adminConfig.demo_traffic_enabled ? '#30d158' : '#ff9f0a',
-                    fontFamily: 'monospace' 
-                  }}>
-                    {adminConfig.demo_traffic_enabled ? 'RUNNING' : 'PAUSED'}
-                  </span>
-                  <div style={{
-                    width: 36,
-                    height: 20,
-                    borderRadius: 10,
-                    background: adminConfig.demo_traffic_enabled ? '#30d158' : 'rgba(255,255,255,0.1)',
-                    position: 'relative',
-                    transition: 'background 0.2s',
-                    cursor: 'pointer'
-                  }}>
-                    <div style={{
-                      width: 14,
-                      height: 14,
-                      borderRadius: '50%',
-                      background: '#ffffff',
-                      position: 'absolute',
-                      top: 3,
-                      left: adminConfig.demo_traffic_enabled ? 19 : 3,
-                      transition: 'left 0.2s cubic-bezier(0.25, 0.1, 0.25, 1)',
-                    }} />
-                  </div>
-                </div>
-              </button>
-
-              <div className="grid grid-cols-2 gap-3">
-                {/* Clear cache */}
-                <button
-                  onClick={handleClearCache}
-                  className="btn btn-secondary text-xs flex items-center justify-center gap-2 py-3 rounded-xl hover:border-[#ff453a]/30 hover:bg-[#ff453a]/5"
-                  style={{ fontFamily: '"Plus Jakarta Sans", sans-serif', fontWeight: 500 }}
-                >
-                  <Trash2 size={13} /> Purge LLM Cache
-                </button>
-                {/* Reset sessions */}
-                <button
-                  onClick={handleResetSessions}
-                  className="btn btn-secondary text-xs flex items-center justify-center gap-2 py-3 rounded-xl hover:border-[#ff9f0a]/30 hover:bg-[#ff9f0a]/5"
-                  style={{ fontFamily: '"Plus Jakarta Sans", sans-serif', fontWeight: 500 }}
-                >
-                  <Database size={13} /> Clear Sessions
-                </button>
-              </div>
-            </div>
-            
-            <div style={{ fontSize: 11, color: '#86868b', marginTop: 12, lineHeight: 1.5, borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 10, fontFamily: '"Plus Jakarta Sans", sans-serif', fontWeight: 300 }}>
-              Administration controls for managing the platform simulation state, wiping contextual agent memory, and clearing LLM analysis caches.
-            </div>
-          </motion.div>
-
-          {/* Diagnostics Panel */}
-          <motion.div
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.45, duration: 0.4 }}
-            className="col-span-3 card p-5"
-          >
-            <div className="section-header" style={{ marginBottom: 16, paddingBottom: 14, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-              <div className="flex items-center gap-2">
-                <Settings size={14} color="#0071e3" />
-                <span style={{ fontFamily: '"Outfit", "-apple-system", sans-serif', fontSize: 13, fontWeight: 600, color: '#ffffff', letterSpacing: '-0.01em' }}>
-                  Engine Diagnostics & Status
-                </span>
-              </div>
-            </div>
-
-            <div className="p-4 rounded-xl" style={{ background: 'rgba(5, 5, 5, 0.4)', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
-              <div className="space-y-3.5">
-                <div className="flex items-center justify-between text-xs font-sans">
-                  <span style={{ color: '#D1D1D6', fontWeight: 400 }}>Active LLM Provider</span>
-                  <span style={{ color: '#ffffff', fontWeight: 600, fontFamily: 'monospace' }}>
-                    {status?.llm_provider === 'github_models' ? 'GitHub Models (gpt-4o-mini)' : 
-                     status?.llm_provider === 'groq' ? 'Groq (llama-3.1-8b)' : 'Pattern-Only Mode'}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-xs font-sans">
-                  <span style={{ color: '#D1D1D6', fontWeight: 400 }}>Active WebSocket Streams</span>
-                  <span style={{ color: '#30d158', fontWeight: 600, fontFamily: 'monospace' }}>
-                    {status?.ws_clients || 1} Connected (Active)
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-xs font-sans">
-                  <span style={{ color: '#D1D1D6', fontWeight: 400 }}>Database Health</span>
-                  <span style={{ color: '#30d158', fontWeight: 600, fontFamily: 'monospace' }}>
-                    SQLite / aiosqlite (Healthy)
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-xs font-sans">
-                  <span style={{ color: '#D1D1D6', fontWeight: 400 }}>LLM Analysis Cache Size</span>
-                  <span style={{ color: '#ffffff', fontWeight: 600, fontFamily: 'monospace' }}>
-                    {adminConfig.llm_cache_size} Entries
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-xs font-sans">
-                  <span style={{ color: '#D1D1D6', fontWeight: 400 }}>Memory Session Count</span>
-                  <span style={{ color: '#ffffff', fontWeight: 600, fontFamily: 'monospace' }}>
-                    {adminConfig.total_active_sessions} Sessions
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div style={{ fontSize: 11, color: '#86868b', marginTop: 12, lineHeight: 1.5, borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 10, fontFamily: '"Plus Jakarta Sans", sans-serif', fontWeight: 300 }}>
-              Live server performance variables, active client sockets, and cache utilization. Evaluators can confirm model health and active connection pipelines here.
-            </div>
-          </motion.div>
-
-        </div>
-        </div>
-
-      <AnimatePresence>
-        {toast && (
-          <motion.div
-            initial={{ opacity: 0, y: 15, x: '-50%' }}
-            animate={{ opacity: 1, y: 0, x: '-50%' }}
-            exit={{ opacity: 0, y: 15, x: '-50%' }}
+            transition={{ duration: 0.45 }}
+            className="card p-4"
             style={{
-              position: 'fixed',
-              bottom: 24,
-              left: '50%',
-              transform: 'translateX(-50%)',
-              zIndex: 100,
-              background: 'rgba(15, 15, 15, 0.9)',
-              border: `1px solid ${toast.type === 'error' ? 'rgba(255,69,58,0.25)' : 'rgba(48,209,88,0.25)'}`,
-              boxShadow: '0 8px 30px rgba(0, 0, 0, 0.5)',
-              borderRadius: 12,
-              padding: '10px 18px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              fontSize: 12,
-              color: '#ffffff',
-              fontFamily: '"Plus Jakarta Sans", sans-serif',
-              backdropFilter: 'blur(20px)',
+              minHeight: 190,
+              background: 'linear-gradient(135deg, rgba(0,113,227,0.18), rgba(22,22,24,0.72) 42%, rgba(255,69,58,0.10))',
             }}
           >
-            <div style={{
-              width: 6, height: 6, borderRadius: '50%',
-              background: toast.type === 'error' ? '#ff453a' : '#30d158',
-              boxShadow: `0 0 6px ${toast.type === 'error' ? '#ff453a' : '#30d158'}`
-            }} />
-            {toast.message}
-          </motion.div>
-        )}
-      </AnimatePresence>
+            <div className="grid grid-cols-1 xl:grid-cols-[1.25fr_0.75fr] gap-4 xl:gap-5 items-center">
+              <div>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '7px 11px', borderRadius: 999, background: `${postureColor}16`, border: `1px solid ${postureColor}35`, color: postureColor, fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                  <RadioTower size={13} />
+                  {postureLabel} posture
+                </div>
+                <h2 style={{ marginTop: 12, fontSize: 22, lineHeight: 1.15, color: '#ffffff', fontFamily: '"Outfit", sans-serif', fontWeight: 800, maxWidth: 720 }}>
+                  {summaryText}
+                </h2>
+                <p style={{ marginTop: 9, color: '#D1D1D6', fontSize: 12, lineHeight: 1.5, maxWidth: 650, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                  The dashboard now reads the session as a story: how much traffic was checked, how much was safe, how much required intervention, and whether the current trust score is healthy.
+                </p>
 
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 mt-4">
+                  <InsightCard
+                    title={`${safeRate}% clean`}
+                    body="Requests that passed without policy action. Higher means normal work is flowing."
+                    color="#30d158"
+                    delay={0.05}
+                  />
+                  <InsightCard
+                    title={`${reviewRate}% reviewed`}
+                    body="Prompts that triggered a warning or block. This is the attention queue."
+                    color="#ff9f0a"
+                    delay={0.1}
+                  />
+                  <InsightCard
+                    title={`${status?.pattern_count || 54} signatures`}
+                    body="Detection rules loaded across input and output guard layers."
+                    color="#0071e3"
+                    delay={0.15}
+                  />
+                </div>
+              </div>
+
+              <div className="card-flat p-3" style={{ display: 'grid', placeItems: 'center', minHeight: 164 }}>
+                <div style={{
+                  width: 120,
+                  height: 120,
+                  borderRadius: '50%',
+                  display: 'grid',
+                  placeItems: 'center',
+                  background: `conic-gradient(${postureColor} ${Math.max(0, Math.min(avg, 100)) * 3.6}deg, rgba(255,255,255,0.08) 0deg)`,
+                  boxShadow: `0 0 46px ${postureColor}22`,
+                  }}>
+                  <div style={{
+                    width: 88,
+                    height: 88,
+                    borderRadius: '50%',
+                    background: 'rgba(8,8,9,0.86)',
+                    display: 'grid',
+                    placeItems: 'center',
+                    border: '1px solid rgba(255,255,255,0.12)',
+                  }}>
+                      <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: 30, lineHeight: 1, color: postureColor, fontFamily: '"Outfit", sans-serif', fontWeight: 800 }}>
+                        {avg}
+                      </div>
+                      <div style={{ color: '#D1D1D6', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 800, marginTop: 7 }}>
+                        trust score
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <p style={{ marginTop: 9, textAlign: 'center', color: '#D1D1D6', fontSize: 10.5, lineHeight: 1.42, maxWidth: 250 }}>
+                  Trust score compresses pattern matches, warnings, blocks, and behavioral signals into one posture indicator.
+                </p>
+              </div>
+            </div>
+          </motion.div>
+
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(4, minmax(220px, 1fr))',
+            gap: 12,
+            alignItems: 'stretch',
+            overflowX: 'auto',
+          }}>
+            <MetricCard
+              label="Total Inspected"
+              value={total}
+              color="#ffffff"
+              delay={0.05}
+              selected={selectedMetric === 'total'}
+              onClick={() => setSelectedMetric('total')}
+            />
+            <MetricCard
+              label="Block Rate"
+              value={`${blockRate}%`}
+              color="#ff453a"
+              delay={0.1}
+              selected={selectedMetric === 'block'}
+              onClick={() => setSelectedMetric('block')}
+            />
+            <MetricCard
+              label="Detection Rate"
+              value={`${reviewRate}%`}
+              color="#ff9f0a"
+              delay={0.15}
+              selected={selectedMetric === 'detection'}
+              onClick={() => setSelectedMetric('detection')}
+            />
+            <MetricCard
+              label="Avg Trust Score"
+              value={avg}
+              color={postureColor}
+              delay={0.2}
+              selected={selectedMetric === 'trust'}
+              onClick={() => setSelectedMetric('trust')}
+            />
+          </div>
+
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={selectedMetric}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.22 }}
+              className="card-flat p-3"
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'minmax(260px, 1fr) minmax(280px, 0.75fr)',
+                gap: 18,
+                alignItems: 'center',
+                borderColor: `${activeMetric.color}45`,
+              }}
+            >
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ width: 9, height: 9, borderRadius: '50%', background: activeMetric.color, boxShadow: `0 0 14px ${activeMetric.color}` }} />
+                  <span style={{ color: '#ffffff', fontSize: 14, fontWeight: 800, fontFamily: '"Outfit", sans-serif' }}>
+                    {activeMetric.title}
+                  </span>
+                </div>
+                <p style={{ color: '#D1D1D6', fontSize: 12, lineHeight: 1.45, marginTop: 8, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                  <span style={{ color: '#ffffff', fontWeight: 700 }}>{activeMetric.body}</span> {activeMetric.detail}
+                </p>
+              </div>
+
+              <div style={{ display: 'grid', gap: 8 }}>
+                {trafficMix.map(item => (
+                  <div key={item.label}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', marginBottom: 5 }}>
+                      <span style={{ color: '#ffffff', fontSize: 11.5, fontWeight: 700, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>{item.label}</span>
+                      <span style={{ color: item.color, fontSize: 11.5, fontWeight: 800, fontFamily: 'monospace' }}>
+                        {item.value.toLocaleString()} / {item.rate}%
+                      </span>
+                    </div>
+                    <div style={{ height: 5, borderRadius: 999, overflow: 'hidden', background: 'rgba(255,255,255,0.08)' }}>
+                      <div style={{ width: `${Math.min(item.rate, 100)}%`, height: '100%', borderRadius: 999, background: item.color, boxShadow: `0 0 12px ${item.color}55` }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          </AnimatePresence>
+
+          <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.22 }}
+              className="xl:col-span-2 card p-4"
+            >
+              <div className="section-header" style={{ marginBottom: 12, paddingBottom: 12, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                <span style={{ fontFamily: '"Outfit", sans-serif', fontSize: 15, fontWeight: 700, color: '#ffffff' }}>
+                  Risk Over 7 Days
+                </span>
+                <TrendingUp size={15} color="#4da3ff" />
+              </div>
+              <ResponsiveContainer width="100%" height={188}>
+                <AreaChart data={daily}>
+                  <defs>
+                    <linearGradient id="gBlock" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#ff453a" stopOpacity={0.28} />
+                      <stop offset="100%" stopColor="#ff453a" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="gWarn" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#ff9f0a" stopOpacity={0.20} />
+                      <stop offset="100%" stopColor="#ff9f0a" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
+                  <XAxis dataKey="date" stroke="#D1D1D6" fontSize={10} fontFamily='"Plus Jakarta Sans"' axisLine={false} tickLine={false} />
+                  <YAxis stroke="#D1D1D6" fontSize={10} fontFamily='"Plus Jakarta Sans"' axisLine={false} tickLine={false} />
+                  <Tooltip />
+                  <Area type="monotone" dataKey="blocked" stroke="#ff453a" fill="url(#gBlock)" strokeWidth={2.5} name="Blocked" />
+                  <Area type="monotone" dataKey="warned" stroke="#ff9f0a" fill="url(#gWarn)" strokeWidth={2} name="Warned" />
+                </AreaChart>
+              </ResponsiveContainer>
+              <p style={{ fontSize: 11.5, color: '#D1D1D6', marginTop: 10, lineHeight: 1.45, borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 9, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                This chart shows whether risk is spiking or calming down. Red means blocked traffic, amber means warnings.
+              </p>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.27 }}
+              className="xl:col-span-3 card p-4"
+            >
+              <div className="section-header" style={{ marginBottom: 12, paddingBottom: 12, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                <div className="flex items-center gap-2">
+                  <Activity size={15} color="#4da3ff" />
+                  <span style={{ fontFamily: '"Outfit", sans-serif', fontSize: 15, fontWeight: 700, color: '#ffffff' }}>
+                    Recent Decisions
+                  </span>
+                  <span className="live-dot" style={{ width: 5, height: 5 }} />
+                </div>
+                <span style={{ fontSize: 11, fontFamily: '"Plus Jakarta Sans", sans-serif', color: '#D1D1D6', fontWeight: 600 }}>
+                  {feed.length} events
+                </span>
+              </div>
+
+              <div className="flex items-center gap-3 pb-2.5 mb-1.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                {['', 'Action', 'Prompt preview', 'Score', 'Time'].map((h, i) => (
+                  <span key={i} style={{
+                    fontSize: 10,
+                    letterSpacing: '0.04em',
+                    textTransform: 'uppercase',
+                    color: '#D1D1D6',
+                    fontWeight: 700,
+                    fontFamily: '"Plus Jakarta Sans", sans-serif',
+                    flex: i === 2 ? 1 : 'none',
+                    width: i === 0 ? 7 : i === 1 ? 62 : i === 3 ? 42 : i === 4 ? 54 : 'auto',
+                    textAlign: i > 2 ? 'right' : 'left',
+                  }}>
+                    {h}
+                  </span>
+                ))}
+              </div>
+
+              <div className="overflow-y-auto" style={{ maxHeight: 258 }}>
+                <AnimatePresence>
+                  {feed.length > 0 ? (
+                    feed.map((ev, i) => <FeedRow key={`${ev.id}-${i}`} ev={ev} i={i} />)
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-16" style={{ color: '#D1D1D6' }}>
+                      <Shield size={30} style={{ marginBottom: 12, opacity: 0.35 }} />
+                      <p style={{ fontSize: 12, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>No events yet. Run the Simulator</p>
+                    </div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </motion.div>
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.32, duration: 0.4 }}
+              className="xl:col-span-2 card p-4"
+            >
+              <div className="section-header" style={{ marginBottom: 12, paddingBottom: 12, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                <div className="flex items-center gap-2">
+                  <Sliders size={14} color="#4da3ff" />
+                  <span style={{ fontFamily: '"Outfit", sans-serif', fontSize: 15, fontWeight: 700, color: '#ffffff' }}>
+                    Controls
+                  </span>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <button
+                  onClick={handleToggleTraffic}
+                  className="flex items-center justify-between w-full p-3.5 rounded-xl transition-all duration-250 text-left hover:bg-[rgba(255,255,255,0.02)]"
+                  style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)' }}
+                >
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#ffffff', fontFamily: '"Plus Jakarta Sans", sans-serif' }}>Demo Traffic</div>
+                    <div style={{ fontSize: 11, color: '#D1D1D6', marginTop: 3, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>Feeds the dashboard with sample events.</div>
+                  </div>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: adminConfig.demo_traffic_enabled ? '#30d158' : '#ff9f0a', fontFamily: 'monospace' }}>
+                    {adminConfig.demo_traffic_enabled ? 'RUNNING' : 'PAUSED'}
+                  </span>
+                </button>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <button onClick={handleClearCache} className="btn btn-secondary text-xs flex items-center justify-center gap-2 py-3 rounded-xl">
+                    <Trash2 size={13} /> Cache
+                  </button>
+                  <button onClick={handleResetSessions} className="btn btn-secondary text-xs flex items-center justify-center gap-2 py-3 rounded-xl">
+                    <Database size={13} /> Sessions
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.36, duration: 0.4 }}
+              className="xl:col-span-3 card p-4"
+            >
+              <div className="section-header" style={{ marginBottom: 12, paddingBottom: 12, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                <div className="flex items-center gap-2">
+                  <Settings size={14} color="#4da3ff" />
+                  <span style={{ fontFamily: '"Outfit", sans-serif', fontSize: 15, fontWeight: 700, color: '#ffffff' }}>
+                    Engine Status
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2.5">
+                <InsightCard title="Model layer" body={status?.llm_provider === 'github_models' ? 'GitHub Models is active for deeper analysis.' : 'Pattern-only mode is active for fast local checks.'} color="#4da3ff" />
+                <InsightCard title="Socket stream" body={`${status?.ws_clients || 1} live dashboard connection${(status?.ws_clients || 1) === 1 ? '' : 's'} receiving events.`} color="#30d158" />
+                <InsightCard title="Session memory" body={`${adminConfig.total_active_sessions} active session${adminConfig.total_active_sessions === 1 ? '' : 's'} currently tracked.`} color="#ff9f0a" />
+                <InsightCard title="Cache size" body={`${adminConfig.llm_cache_size} cached model result${adminConfig.llm_cache_size === 1 ? '' : 's'} stored for faster repeats.`} color="#ffffff" />
+              </div>
+            </motion.div>
+          </div>
+        </div>
+
+        <AnimatePresence>
+          {toast && (
+            <motion.div
+              initial={{ opacity: 0, y: 15, x: '-50%' }}
+              animate={{ opacity: 1, y: 0, x: '-50%' }}
+              exit={{ opacity: 0, y: 15, x: '-50%' }}
+              style={{
+                position: 'fixed',
+                bottom: 24,
+                left: '50%',
+                transform: 'translateX(-50%)',
+                zIndex: 100,
+                background: 'rgba(15, 15, 15, 0.9)',
+                border: `1px solid ${toast.type === 'error' ? 'rgba(255,69,58,0.25)' : 'rgba(48,209,88,0.25)'}`,
+                boxShadow: '0 8px 30px rgba(0, 0, 0, 0.5)',
+                borderRadius: 12,
+                padding: '10px 18px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                fontSize: 12,
+                color: '#ffffff',
+                fontFamily: '"Plus Jakarta Sans", sans-serif',
+                backdropFilter: 'blur(20px)',
+              }}
+            >
+              <div style={{
+                width: 6,
+                height: 6,
+                borderRadius: '50%',
+                background: toast.type === 'error' ? '#ff453a' : '#30d158',
+                boxShadow: `0 0 6px ${toast.type === 'error' ? '#ff453a' : '#30d158'}`,
+              }} />
+              {toast.message}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   )
