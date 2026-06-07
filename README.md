@@ -322,12 +322,8 @@ All generated or assisted code was reviewed, edited, and integrated specifically
 
 ## Team
 
-<<<<<<< HEAD
-## 👤 Team : **BloodWyrm**
+Team name: BloodWyrm
 
-**Anshul Jain** : Solo  
-IIIT Delhi · Full-stack developer & AI security researcher  
-=======
 Anshul Jain
 
 Solo participant
@@ -336,5 +332,4 @@ IIIT Delhi
 
 Full-stack developer and AI security researcher
 
->>>>>>> 749c495 (Add public backend status routes)
 Microsoft Build AI 2026
