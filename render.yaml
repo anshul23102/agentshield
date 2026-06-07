@@ -6,6 +6,8 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: python run_server.py
     envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.11
       - key: GITHUB_TOKEN
         sync: false
     plan: free
