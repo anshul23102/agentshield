@@ -31,7 +31,7 @@ export default function App() {
       {booting && <LoadingScreen onComplete={() => { sessionStorage.setItem('as_booted','1'); setBooting(false) }} />}
 
       <Routes>
-        {/* Landing Page (no sidebar, full screen, clean Apple aesthetic) */}
+        {/* Landing page without the platform sidebar */}
         <Route path="/" element={<Landing />} />
 
         {/* Platform Dashboard Layout */}
