@@ -21,12 +21,9 @@ export default function Sidebar() {
       initial={{ x: -16, opacity: 0 }}
       animate={{ x: 0, opacity: 1 }}
       transition={{ duration: 0.4, ease: [0.25, 0, 0, 1] }}
-      className="fixed left-0 top-0 h-full z-40 flex flex-col"
+      className="glass-bar fixed left-0 top-0 h-full z-40 flex flex-col"
       style={{
         width: 220,
-        background: 'rgba(10, 10, 10, 0.65)',
-        backdropFilter: 'blur(30px)',
-        WebkitBackdropFilter: 'blur(30px)',
         borderRight: '1px solid rgba(255, 255, 255, 0.08)',
       }}
     >
@@ -65,9 +62,10 @@ export default function Sidebar() {
                 style={{
                   display: 'flex', alignItems: 'center', gap: 10,
                   padding: '9px 12px', borderRadius: 9,
-                  background: isActive ? 'rgba(255, 255, 255, 0.04)' : 'transparent',
-                  border: `1px solid ${isActive ? 'rgba(255, 255, 255, 0.08)' : 'transparent'}`,
-                  boxShadow: isActive ? '0 2px 8px rgba(0, 0, 0, 0.4)' : 'none',
+                  background: isActive ? 'linear-gradient(145deg, rgba(255,255,255,0.11), rgba(255,255,255,0.035))' : 'transparent',
+                  border: `1px solid ${isActive ? 'rgba(255, 255, 255, 0.13)' : 'transparent'}`,
+                  boxShadow: isActive ? '0 8px 22px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(255,255,255,0.08)' : 'none',
+                  backdropFilter: isActive ? 'blur(18px) saturate(150%)' : 'none',
                 }}
               >
                 <Icon

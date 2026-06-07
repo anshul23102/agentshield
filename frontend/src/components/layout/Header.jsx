@@ -4,11 +4,8 @@ import { Wifi, WifiOff } from 'lucide-react'
 export default function Header({ title, subtitle, wsConnected, right }) {
   return (
     <div
-      className="flex items-center justify-between px-8 py-5"
+      className="glass-bar flex items-center justify-between px-8 py-5"
       style={{
-        background: 'rgba(10, 10, 10, 0.65)',
-        backdropFilter: 'blur(20px)',
-        WebkitBackdropFilter: 'blur(20px)',
         borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
       }}
     >
@@ -31,9 +28,10 @@ export default function Header({ title, subtitle, wsConnected, right }) {
         {wsConnected !== undefined && (
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg"
              style={{
-               background: wsConnected ? 'rgba(52, 199, 89, 0.08)' : 'rgba(255, 59, 48, 0.08)',
+               background: wsConnected ? 'linear-gradient(145deg, rgba(52, 199, 89, 0.14), rgba(52, 199, 89, 0.05))' : 'linear-gradient(145deg, rgba(255, 59, 48, 0.14), rgba(255, 59, 48, 0.05))',
                border: `1px solid ${wsConnected ? 'rgba(52, 199, 89, 0.15)' : 'rgba(255, 59, 48, 0.15)'}`,
                boxShadow: wsConnected ? '0 2px 8px rgba(52, 199, 89, 0.05)' : '0 2px 8px rgba(255, 59, 48, 0.05)',
+               backdropFilter: 'blur(18px) saturate(150%)',
              }}>
             {wsConnected
               ? <Wifi size={11} color="#34c759" />

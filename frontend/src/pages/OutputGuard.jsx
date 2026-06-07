@@ -33,11 +33,21 @@ export default function OutputGuard() {
     if (!text.trim()) return
     setLoading(true); setResult(null)
     try {
-      setTimeout(async () => {
-        setResult(await scanOutput(text))
-        setLoading(false)
-      }, 500)
-    } catch { setLoading(false) }
+      await new Promise(resolve => setTimeout(resolve, 350))
+      setResult(await scanOutput(text))
+    } catch {
+      setResult({
+        is_safe: false,
+        action: 'block',
+        risk_score: 0,
+        leaks_found: [],
+        redacted_text: text,
+        leak_summary: {},
+        reasoning: 'Cannot reach the API. Is the backend running on :8000?',
+      })
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (

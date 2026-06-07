@@ -4,6 +4,7 @@ SQLite with aiosqlite — zero-config, async, production-suitable for prototype 
 """
 
 import json
+import os
 import time
 import asyncio
 import aiosqlite
@@ -11,6 +12,8 @@ from pathlib import Path
 from typing import Optional
 
 DB_PATH = Path(__file__).parent.parent / "data" / "agentshield.db"
+EVENT_RETENTION_DAYS = int(os.getenv("AGENTSHIELD_EVENT_RETENTION_DAYS", "30"))
+EVENT_CLEANUP_INTERVAL_SECONDS = int(os.getenv("AGENTSHIELD_EVENT_CLEANUP_INTERVAL_SECONDS", "3600"))
 
 
 CREATE_TABLES = """
@@ -337,8 +340,13 @@ async def seed_database_if_empty(db: aiosqlite.Connection):
 
 async def get_db() -> aiosqlite.Connection:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    db = await aiosqlite.connect(str(DB_PATH))
+    db = await aiosqlite.connect(str(DB_PATH), timeout=30.0)
     db.row_factory = aiosqlite.Row
+    
+    # Enable Write-Ahead Logging (WAL) for high concurrency
+    await db.execute("PRAGMA journal_mode=WAL")
+    await db.execute("PRAGMA synchronous=NORMAL")
+    
     await db.executescript(CREATE_TABLES)
     await db.commit()
     await seed_database_if_empty(db)
@@ -348,6 +356,8 @@ async def get_db() -> aiosqlite.Connection:
 
 _db_instance: Optional[aiosqlite.Connection] = None
 _lock = asyncio.Lock()
+_write_lock = asyncio.Lock()
+_last_cleanup_ts = 0.0
 
 
 async def get_shared_db() -> aiosqlite.Connection:
@@ -360,6 +370,7 @@ async def get_shared_db() -> aiosqlite.Connection:
 
 async def log_event(result_dict: dict, input_text: str, session_id: Optional[str] = None):
     import hashlib
+    global _last_cleanup_ts
     db = await get_shared_db()
 
     input_hash = hashlib.sha256(input_text.encode()).hexdigest()[:16]
@@ -367,65 +378,71 @@ async def log_event(result_dict: dict, input_text: str, session_id: Optional[str
     pattern_ids = json.dumps([m["id"] for m in result_dict.get("pattern_matches", [])])
 
     ts = time.time()
-    await db.execute(
-        """INSERT INTO threat_events
-           (timestamp, session_id, input_hash, input_preview, action, trust_score,
-            threat_category, threat_level, pattern_ids, llm_used, processing_ms, reasoning)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (
-            ts,
-            session_id,
-            input_hash,
-            input_preview,
-            result_dict["action"],
-            result_dict["trust_score"],
-            result_dict.get("threat_category"),
-            result_dict.get("threat_level"),
-            pattern_ids,
-            1 if result_dict.get("llm_analysis") else 0,
-            result_dict.get("processing_time_ms", 0),
-            result_dict.get("reasoning", ""),
-        ),
-    )
-
-    # Update pattern stats
-    for match in result_dict.get("pattern_matches", []):
+    async with _write_lock:
         await db.execute(
-            """INSERT INTO pattern_hit_stats (pattern_id, hit_count, last_seen)
-               VALUES (?, 1, ?)
-               ON CONFLICT(pattern_id) DO UPDATE SET
-                 hit_count = hit_count + 1,
-                 last_seen = excluded.last_seen""",
-            (match["id"], ts),
+            """INSERT INTO threat_events
+               (timestamp, session_id, input_hash, input_preview, action, trust_score,
+                threat_category, threat_level, pattern_ids, llm_used, processing_ms, reasoning)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                ts,
+                session_id,
+                input_hash,
+                input_preview,
+                result_dict["action"],
+                result_dict["trust_score"],
+                result_dict.get("threat_category"),
+                result_dict.get("threat_level"),
+                pattern_ids,
+                1 if result_dict.get("llm_analysis") else 0,
+                result_dict.get("processing_time_ms", 0),
+                result_dict.get("reasoning", ""),
+            ),
         )
 
-    # Update daily stats
-    from datetime import date
-    today = date.today().isoformat()
-    action = result_dict["action"]
-    await db.execute(
-        """INSERT INTO daily_stats (date, total, blocked, warned, allowed, avg_score)
-           VALUES (?, 1, ?, ?, ?, ?)
-           ON CONFLICT(date) DO UPDATE SET
-             total   = total + 1,
-             blocked = blocked + ?,
-             warned  = warned + ?,
-             allowed = allowed + ?,
-             avg_score = (avg_score * (total - 1) + ?) / total""",
-        (
-            today,
-            1 if action == "block" else 0,
-            1 if action == "warn" else 0,
-            1 if action == "allow" else 0,
-            result_dict["trust_score"],
-            1 if action == "block" else 0,
-            1 if action == "warn" else 0,
-            1 if action == "allow" else 0,
-            result_dict["trust_score"],
-        ),
-    )
+        # Update pattern stats
+        for match in result_dict.get("pattern_matches", []):
+            await db.execute(
+                """INSERT INTO pattern_hit_stats (pattern_id, hit_count, last_seen)
+                   VALUES (?, 1, ?)
+                   ON CONFLICT(pattern_id) DO UPDATE SET
+                     hit_count = hit_count + 1,
+                     last_seen = excluded.last_seen""",
+                (match["id"], ts),
+            )
 
-    await db.commit()
+        # Update daily stats
+        from datetime import date
+        today = date.today().isoformat()
+        action = result_dict["action"]
+        await db.execute(
+            """INSERT INTO daily_stats (date, total, blocked, warned, allowed, avg_score)
+               VALUES (?, 1, ?, ?, ?, ?)
+               ON CONFLICT(date) DO UPDATE SET
+                 total   = total + 1,
+                 blocked = blocked + ?,
+                 warned  = warned + ?,
+                 allowed = allowed + ?,
+                 avg_score = (avg_score * (total - 1) + ?) / total""",
+            (
+                today,
+                1 if action == "block" else 0,
+                1 if action == "warn" else 0,
+                1 if action == "allow" else 0,
+                result_dict["trust_score"],
+                1 if action == "block" else 0,
+                1 if action == "warn" else 0,
+                1 if action == "allow" else 0,
+                result_dict["trust_score"],
+            ),
+        )
+
+        if EVENT_RETENTION_DAYS > 0 and ts - _last_cleanup_ts > EVENT_CLEANUP_INTERVAL_SECONDS:
+            cutoff = ts - (EVENT_RETENTION_DAYS * 86400)
+            await db.execute("DELETE FROM threat_events WHERE timestamp < ?", (cutoff,))
+            _last_cleanup_ts = ts
+
+        await db.commit()
 
 
 async def get_recent_events(limit: int = 50) -> list[dict]:

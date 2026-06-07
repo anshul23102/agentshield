@@ -5,6 +5,7 @@ FastAPI backend with WebSocket support for live dashboard updates.
 
 import asyncio
 import json
+import os
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -14,6 +15,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, BackgroundTasks, HT
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from dotenv import load_dotenv
 
 from shield import ThreatDetector
 from shield.patterns import ATTACK_PATTERNS, ThreatCategory, ThreatLevel, CATEGORY_STATS, LEVEL_STATS
@@ -21,6 +23,8 @@ from shield.output_guard import OutputGuard, LEAK_PATTERNS, LEAK_CATEGORY_STATS
 from database.db import log_event, get_recent_events, get_analytics, get_shared_db
 
 # ── Global state ─────────────────────────────────────────────────────────────
+
+load_dotenv()
 
 detector = ThreatDetector()
 output_guard = OutputGuard()
@@ -30,6 +34,10 @@ event_queue: asyncio.Queue = asyncio.Queue(maxsize=1000)
 admin_settings = {
     "demo_traffic_enabled": True
 }
+
+MAX_INSPECT_CHARS = int(os.getenv("AGENTSHIELD_MAX_INSPECT_CHARS", "50000"))
+MAX_OUTPUT_SCAN_CHARS = int(os.getenv("AGENTSHIELD_MAX_OUTPUT_SCAN_CHARS", "100000"))
+MAX_BATCH_ITEMS = int(os.getenv("AGENTSHIELD_MAX_BATCH_ITEMS", "50"))
 
 
 async def demo_threat_generator():
@@ -351,8 +359,8 @@ class OutputScanRequest(BaseModel):
 async def inspect(req: InspectRequest, background_tasks: BackgroundTasks):
     if not req.text or not req.text.strip():
         raise HTTPException(400, "text cannot be empty")
-    if len(req.text) > 50_000:
-        raise HTTPException(413, "text too large (max 50,000 chars)")
+    if len(req.text) > MAX_INSPECT_CHARS:
+        raise HTTPException(413, f"text too large (max {MAX_INSPECT_CHARS:,} chars)")
 
     session_id = req.session_id or str(uuid.uuid4())
     result = await detector.inspect(
@@ -375,19 +383,31 @@ async def inspect(req: InspectRequest, background_tasks: BackgroundTasks):
 
 @app.post("/api/inspect/batch")
 async def inspect_batch(req: BatchInspectRequest):
-    if len(req.items) > 50:
-        raise HTTPException(400, "Max 50 items per batch")
+    if len(req.items) > MAX_BATCH_ITEMS:
+        raise HTTPException(400, f"Max {MAX_BATCH_ITEMS} items per batch")
+    for idx, item in enumerate(req.items):
+        if not item.text or not item.text.strip():
+            raise HTTPException(400, f"items[{idx}].text cannot be empty")
+        if len(item.text) > MAX_INSPECT_CHARS:
+            raise HTTPException(413, f"items[{idx}].text too large (max {MAX_INSPECT_CHARS:,} chars)")
 
-    tasks = [
-        detector.inspect(
-            text=item.text,
-            session_id=item.session_id or str(uuid.uuid4()),
-            skip_llm=item.skip_llm,
-        )
+    normalized_items = [
+        (item, item.session_id or str(uuid.uuid4()))
         for item in req.items
     ]
+    tasks = [
+        detector.inspect(text=item.text, session_id=session_id, skip_llm=item.skip_llm)
+        for item, session_id in normalized_items
+    ]
     results = await asyncio.gather(*tasks)
-    return [r.to_dict() for r in results]
+    payload = []
+    for result, (item, session_id) in zip(results, normalized_items):
+        d = result.to_dict()
+        d["session_id"] = session_id
+        d["agent_name"] = item.agent_name
+        d["timestamp"] = time.time()
+        payload.append(d)
+    return payload
 
 
 @app.post("/api/scan/output")
@@ -398,8 +418,8 @@ async def scan_output(req: OutputScanRequest):
     """
     if not req.text or not req.text.strip():
         raise HTTPException(400, "text cannot be empty")
-    if len(req.text) > 100_000:
-        raise HTTPException(413, "text too large (max 100,000 chars)")
+    if len(req.text) > MAX_OUTPUT_SCAN_CHARS:
+        raise HTTPException(413, f"text too large (max {MAX_OUTPUT_SCAN_CHARS:,} chars)")
 
     result = output_guard.scan(req.text, redact=req.redact)
     payload = result.to_dict()
@@ -537,7 +557,13 @@ async def status():
         "llm_provider": detector.analyzer.provider,
         "llm_available": detector.analyzer.is_llm_available,
         "pattern_count": len(ATTACK_PATTERNS),
+        "output_pattern_count": len(LEAK_PATTERNS),
         "ws_clients": len(ws_clients),
+        "limits": {
+            "max_inspect_chars": MAX_INSPECT_CHARS,
+            "max_output_scan_chars": MAX_OUTPUT_SCAN_CHARS,
+            "max_batch_items": MAX_BATCH_ITEMS,
+        },
         **session_stats,
     }
 

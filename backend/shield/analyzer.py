@@ -11,6 +11,7 @@ import hashlib
 from typing import Optional
 from dataclasses import dataclass
 from openai import AsyncOpenAI
+from dotenv import load_dotenv
 
 from .patterns import ThreatCategory, ThreatLevel
 
@@ -54,10 +55,13 @@ Respond ONLY with a valid JSON object in exactly this format:
 
 class LLMAnalyzer:
     def __init__(self):
+        load_dotenv()
         self._cache: dict[str, LLMAnalysisResult] = {}
         self._client: Optional[AsyncOpenAI] = None
         self._model: Optional[str] = None
         self._provider: str = "none"
+        self._cache_limit = int(os.getenv("AGENTSHIELD_LLM_CACHE_LIMIT", "5000"))
+        self._semaphore = asyncio.Semaphore(int(os.getenv("AGENTSHIELD_LLM_MAX_CONCURRENCY", "8")))
         self._initialize_client()
 
     def _initialize_client(self):
@@ -120,19 +124,20 @@ class LLMAnalyzer:
             user_content = f"Session context:\n{context}\n\nCurrent input:\n{text}"
 
         try:
-            response = await asyncio.wait_for(
-                self._client.chat.completions.create(
-                    model=self._model,
-                    messages=[
-                        {"role": "system", "content": ANALYSIS_PROMPT},
-                        {"role": "user", "content": user_content},
-                    ],
-                    temperature=0.1,
-                    max_tokens=512,
-                    response_format={"type": "json_object"} if "gpt" in (self._model or "") else None,
-                ),
-                timeout=8.0,
-            )
+            async with self._semaphore:
+                response = await asyncio.wait_for(
+                    self._client.chat.completions.create(
+                        model=self._model,
+                        messages=[
+                            {"role": "system", "content": ANALYSIS_PROMPT},
+                            {"role": "user", "content": user_content},
+                        ],
+                        temperature=0.1,
+                        max_tokens=512,
+                        response_format={"type": "json_object"} if "gpt" in (self._model or "") else None,
+                    ),
+                    timeout=float(os.getenv("AGENTSHIELD_LLM_TIMEOUT_SECONDS", "8.0")),
+                )
 
             raw = response.choices[0].message.content.strip()
             # Strip markdown code fences if present
@@ -153,7 +158,13 @@ class LLMAnalyzer:
                 mitigation=str(data.get("mitigation", "n/a")),
             )
 
-            self._cache[cache_key] = result
+            # Evict oldest cache entry when the bounded cache is full.
+            if self._cache_limit > 0 and len(self._cache) >= self._cache_limit:
+                oldest_key = next(iter(self._cache))
+                self._cache.pop(oldest_key, None)
+
+            if self._cache_limit != 0:
+                self._cache[cache_key] = result
             return result
 
         except asyncio.TimeoutError:
