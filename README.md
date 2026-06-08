@@ -20,7 +20,7 @@ Backend docs: https://agentshield-api-658e.onrender.com/docs
 
 GitHub repository: https://github.com/anshul23102/agentshield
 
-Demo video: add YouTube link here
+Demo video: https://youtu.be/KANVjjV9FUQ
 
 ## Microsoft AI Stack
 
