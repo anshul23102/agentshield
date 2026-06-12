@@ -58,6 +58,8 @@ class SessionManager:
     def record_threat_score(self, session_id: str, score: int):
         ctx = self.get_or_create(session_id)
         ctx.threat_score_history.append(score)
+        if len(ctx.threat_score_history) > 100:
+            ctx.threat_score_history.pop(0)
         if score <= 30:
             ctx.block_count += 1
         elif score <= 60:

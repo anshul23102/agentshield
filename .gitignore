@@ -40,3 +40,8 @@ backend/data/
 # Logs
 *.log
 uvicorn.log
+
+# Local deck scripts and output (not part of submission)
+make_pptx.js
+AgentShield_Deck.pptx
+AgentShield_Deck.pdf

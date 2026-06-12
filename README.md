@@ -306,6 +306,7 @@ Tools used:
 
 - GitHub Copilot for coding suggestions and editing support.
 - OpenAI Codex for implementation support, debugging, documentation, and deployment guidance.
+- Claude AI (Anthropic) for architecture review, backend implementation, output guard pattern design, README drafting, and deployment troubleshooting.
 
 Areas where AI assistance was used:
 

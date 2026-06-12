@@ -21,7 +21,7 @@ from dotenv import load_dotenv
 from shield import ThreatDetector
 from shield.patterns import ATTACK_PATTERNS, ThreatCategory, ThreatLevel, CATEGORY_STATS, LEVEL_STATS
 from shield.output_guard import OutputGuard, LEAK_PATTERNS, LEAK_CATEGORY_STATS
-from database.db import log_event, get_recent_events, get_analytics, get_shared_db
+from database.db import log_event, get_recent_events, get_analytics, init_db
 
 # ── Global state ─────────────────────────────────────────────────────────────
 
@@ -264,7 +264,7 @@ async def demo_threat_generator():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Warm up DB
-    await get_shared_db()
+    await init_db()
     # Start WebSocket broadcast worker
     task = asyncio.create_task(ws_broadcast_worker())
     # Start live traffic generator
