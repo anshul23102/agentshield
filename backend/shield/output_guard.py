@@ -154,7 +154,7 @@ LEAK_PATTERNS: list[LeakPattern] = [
     # ─── PII ─────────────────────────────────────────────────────────────────
     LeakPattern(
         id="PII-SSN",
-        pattern=r"\b(?!000|666|9\d\d)[0-8]\d{2}[\s-]?(?!00)\d{2}[\s-]?(?!0000)\d{4}\b",
+        pattern=r"\b(?!000|666|9\d\d)[0-8]\d{2}[\s-](?!00)\d{2}[\s-](?!0000)\d{4}\b",
         leak_type=LeakType.PII, severity=LeakSeverity.CRITICAL,
         description="US Social Security Number",
         redact_with="[SSN_REDACTED]",
@@ -168,7 +168,7 @@ LEAK_PATTERNS: list[LeakPattern] = [
     ),
     LeakPattern(
         id="PII-PHONE",
-        pattern=r"\b(\+?\d{1,3}[\s-]?)?\(?\d{3}\)?[\s-]?\d{3}[\s-]?\d{4}\b",
+        pattern=r"(?:\+\d{1,3}[\s-]?)?(?:\(\d{3}\)|\b\d{3})[\s.-]\d{3}[\s.-]\d{4}\b",
         leak_type=LeakType.PII, severity=LeakSeverity.MEDIUM,
         description="Phone Number",
         redact_with="[PHONE_REDACTED]",
@@ -218,6 +218,33 @@ LEAK_PATTERNS: list[LeakPattern] = [
 COMPILED_LEAK_PATTERNS = [
     (lp, re.compile(lp.pattern, lp.flags)) for lp in LEAK_PATTERNS
 ]
+
+
+# Verhoeff dihedral group tables for Aadhaar checksum validation
+_VERHOEFF_D = [
+    [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], [1, 2, 3, 4, 0, 6, 7, 8, 9, 5],
+    [2, 3, 4, 0, 1, 7, 8, 9, 5, 6], [3, 4, 0, 1, 2, 8, 9, 5, 6, 7],
+    [4, 0, 1, 2, 3, 9, 5, 6, 7, 8], [5, 9, 8, 7, 6, 0, 4, 3, 2, 1],
+    [6, 5, 9, 8, 7, 1, 0, 4, 3, 2], [7, 6, 5, 9, 8, 2, 1, 0, 4, 3],
+    [8, 7, 6, 5, 9, 3, 2, 1, 0, 4], [9, 8, 7, 6, 5, 4, 3, 2, 1, 0],
+]
+_VERHOEFF_P = [
+    [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], [1, 5, 7, 6, 2, 8, 3, 0, 9, 4],
+    [5, 8, 0, 3, 7, 9, 6, 1, 4, 2], [8, 9, 1, 6, 0, 4, 3, 5, 2, 7],
+    [9, 4, 5, 3, 1, 2, 6, 8, 7, 0], [4, 2, 8, 6, 5, 7, 3, 9, 0, 1],
+    [2, 7, 9, 3, 8, 0, 6, 4, 1, 5], [7, 0, 4, 6, 9, 1, 3, 2, 5, 8],
+]
+
+
+def _verhoeff_valid(number: str) -> bool:
+    """Aadhaar uses the Verhoeff checksum; rejects arbitrary 12-digit numbers."""
+    digits = re.sub(r"\D", "", number)
+    if len(digits) != 12:
+        return False
+    c = 0
+    for i, d in enumerate(reversed(digits)):
+        c = _VERHOEFF_D[c][_VERHOEFF_P[i % 8][int(d)]]
+    return c == 0
 
 
 def _luhn_valid(number: str) -> bool:
@@ -291,10 +318,9 @@ class OutputGuard:
 
     def scan(self, text: str, redact: bool = True) -> OutputScanResult:
         leaks: list[LeakMatch] = []
-        redacted = text
         risk_score = 100
 
-        # Collect all matches (process longest/most-specific first for redaction)
+        # Collect all matches with validation filters
         all_matches = []
         for lp, compiled in COMPILED_LEAK_PATTERNS:
             for m in compiled.finditer(text):
@@ -305,18 +331,24 @@ class OutputGuard:
                     if not _luhn_valid(matched):
                         continue
 
+                # Verhoeff validation for Aadhaar numbers
+                if lp.id == "PII-AADHAAR" and not _verhoeff_valid(matched):
+                    continue
+
                 all_matches.append((lp, m, matched))
 
         # Sort by position for deterministic redaction
         all_matches.sort(key=lambda x: x[1].start())
 
         seen_spans = []
+        accepted = []
         for lp, m, matched in all_matches:
             # Skip overlapping matches (first/most-specific wins)
             span = (m.start(), m.end())
             if any(span[0] < e and span[1] > s for s, e in seen_spans):
                 continue
             seen_spans.append(span)
+            accepted.append((lp, span, matched))
 
             preview = matched[:6] + "***" if len(matched) > 6 else "***"
             leaks.append(LeakMatch(
@@ -329,8 +361,19 @@ class OutputGuard:
             ))
             risk_score -= SEVERITY_DEDUCTION.get(lp.severity, 10)
 
-            if redact:
-                redacted = redacted.replace(matched, lp.redact_with)
+        # Span-based reconstruction: each match is replaced exactly once at its
+        # own position, so repeated or nested values cannot corrupt the output.
+        if redact and accepted:
+            parts = []
+            cursor = 0
+            for lp, (start, end), _ in accepted:
+                parts.append(text[cursor:start])
+                parts.append(lp.redact_with)
+                cursor = end
+            parts.append(text[cursor:])
+            redacted = "".join(parts)
+        else:
+            redacted = text
 
         risk_score = max(0, min(100, risk_score))
 

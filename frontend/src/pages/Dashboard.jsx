@@ -283,7 +283,7 @@ export default function Dashboard() {
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.45 }}
-            className="card p-4"
+            className="card glass-sheen p-4"
             style={{
               minHeight: 190,
               background: 'linear-gradient(135deg, rgba(0,113,227,0.18), rgba(22,22,24,0.72) 42%, rgba(255,69,58,0.10))',
@@ -299,7 +299,7 @@ export default function Dashboard() {
                   {summaryText}
                 </h2>
                 <p style={{ marginTop: 9, color: '#D1D1D6', fontSize: 12, lineHeight: 1.5, maxWidth: 650, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
-                  The dashboard now reads the session as a story: how much traffic was checked, how much was safe, how much required intervention, and whether the current trust score is healthy.
+                  Every figure below is computed from inspected traffic: volume checked, share that passed cleanly, share that required intervention, and the current trust posture.
                 </p>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 mt-4">
@@ -316,7 +316,7 @@ export default function Dashboard() {
                     delay={0.1}
                   />
                   <InsightCard
-                    title={`${status?.pattern_count || 54} signatures`}
+                    title={status ? `${(status.pattern_count || 0) + (status.output_pattern_count || 0)} signatures` : 'Loading signatures'}
                     body="Detection rules loaded across input and output guard layers."
                     color="#0071e3"
                     delay={0.15}
@@ -596,7 +596,7 @@ export default function Dashboard() {
 
               <div className="grid grid-cols-2 gap-2.5">
                 <InsightCard title="Model layer" body={status?.llm_provider === 'github_models' ? 'GitHub Models is active for deeper analysis.' : 'Pattern-only mode is active for fast local checks.'} color="#4da3ff" />
-                <InsightCard title="Socket stream" body={`${status?.ws_clients || 1} live dashboard connection${(status?.ws_clients || 1) === 1 ? '' : 's'} receiving events.`} color="#30d158" />
+                <InsightCard title="Socket stream" body={`${status?.ws_clients ?? 0} live dashboard connection${(status?.ws_clients ?? 0) === 1 ? '' : 's'} receiving events.`} color="#30d158" />
                 <InsightCard title="Session memory" body={`${adminConfig.total_active_sessions} active session${adminConfig.total_active_sessions === 1 ? '' : 's'} currently tracked.`} color="#ff9f0a" />
                 <InsightCard title="Cache size" body={`${adminConfig.llm_cache_size} cached model result${adminConfig.llm_cache_size === 1 ? '' : 's'} stored for faster repeats.`} color="#ffffff" />
               </div>

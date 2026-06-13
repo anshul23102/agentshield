@@ -20,6 +20,7 @@ export default function OutputGuard() {
   const [text,    setText]    = useState('')
   const [result,  setResult]  = useState(null)
   const [loading, setLoading] = useState(false)
+  const [error,   setError]   = useState(null)
   const [demos,   setDemos]   = useState([])
   const [stats,   setStats]   = useState(null)
   const taRef = useRef(null)
@@ -31,20 +32,13 @@ export default function OutputGuard() {
 
   const run = async () => {
     if (!text.trim()) return
-    setLoading(true); setResult(null)
+    setLoading(true); setResult(null); setError(null)
     try {
-      await new Promise(resolve => setTimeout(resolve, 350))
       setResult(await scanOutput(text))
-    } catch {
-      setResult({
-        is_safe: false,
-        action: 'block',
-        risk_score: 0,
-        leaks_found: [],
-        redacted_text: text,
-        leak_summary: {},
-        reasoning: 'Cannot reach the API. Is the backend running on :8000?',
-      })
+    } catch (e) {
+      setError(e?.response?.status === 429
+        ? 'Rate limit reached. Wait a moment and try again.'
+        : 'Cannot reach the API. The backend may be waking up — retry in ~30 seconds.')
     } finally {
       setLoading(false)
     }
@@ -173,6 +167,12 @@ export default function OutputGuard() {
                   ? <><Loader2 size={15} className="animate-spin" /> Scanning payload…</>
                   : <><ShieldCheck size={15} /> Scan agent output</>}
               </button>
+
+              {error && (
+                <div style={{ fontSize: 12, color: '#ff453a', fontFamily: '"Plus Jakarta Sans", sans-serif', padding: '12px 16px', background: 'rgba(255,69,58,0.05)', border: '1px solid rgba(255,69,58,0.15)', borderRadius: 12 }}>
+                  {error}
+                </div>
+              )}
 
               <AnimatePresence>
                 {result && (

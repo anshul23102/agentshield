@@ -63,7 +63,11 @@ export default function Simulator() {
     setLoading(true); setError(null); setResult(null)
     try {
       setResult(await inspect(prompt, session))
-    } catch { setError('Cannot reach the API. Is the backend running on :8000?') }
+    } catch (e) {
+      setError(e?.response?.status === 429
+        ? 'Rate limit reached. Wait a moment and try again.'
+        : 'Cannot reach the API. The backend may be waking up — retry in ~30 seconds.')
+    }
     finally  { setLoading(false) }
   }
 

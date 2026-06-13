@@ -101,6 +101,13 @@ SUSPICIOUS_KEYWORDS = {
         "system prompt", "reveal instructions", "your training", "exfiltrate",
         "extract data", "developer mode", "maintenance mode", "debug mode",
         "evil ai", "shadow ai", "alter ego", "true self", "inner self",
+        # Harmful-intent / abuse requests (not agent-hijacking, but malicious use)
+        "hack", "hacking", "steal", "stealing", "crack a password", "crack the password",
+        "break into", "gain access to", "unauthorized access", "without permission",
+        "without consent", "without their knowledge", "someone's account",
+        "someone's password", "their password", "spy on", "stalk", "phishing",
+        "ransomware", "malware", "keylogger", "ddos", "sql injection",
+        "bypass authentication", "bypass login", "exploit a vulnerability",
     ],
     "medium": [
         "hypothetically", "theoretically", "as a fictional", "for academic purposes",
@@ -198,14 +205,12 @@ class ThreatDetector:
             session_context = self.session_manager.get_or_create(session_id)
             self.session_manager.add_message(session_id, text)
 
-            # Multi-turn attack signals
-            if session_context.message_count > 5:
-                recent = self.session_manager.get_recent_messages(session_id, 5)
-                # Rising threat pattern -> decreasing trust score history
-                if session_context.threat_score_history and \
-                   len(session_context.threat_score_history) >= 3 and \
-                   all(session_context.threat_score_history[-i] <= session_context.threat_score_history[-i-1]
-                       for i in range(1, 3)):
+            # Multi-turn attack signals: strictly decreasing trust scores ending
+            # in risky territory. Equal scores (e.g. a clean streak of 95s) must
+            # not trigger this flag.
+            history = session_context.threat_score_history
+            if session_context.message_count > 5 and len(history) >= 3:
+                if history[-1] < 60 and history[-1] < history[-2] < history[-3]:
                     behavioral_flags.append("escalating_threat_pattern")
 
             # Rapid message rate
@@ -213,15 +218,19 @@ class ThreatDetector:
                 behavioral_flags.append("high_message_rate_detected")
 
         # ── Layer 4: LLM Deep Analysis ────────────────────────────────────────
-        # Run LLM if: uncertain from patterns alone, or pattern-matched but want confidence
+        # The LLM is the semantic safety net for anything the lightweight layers
+        # can't structurally match (e.g. plain-language harmful-intent requests).
+        # Run it whenever available on any non-trivial input; only skip the
+        # genuinely tiny/empty prompts where there is nothing to reason about.
+        word_count = len(lower.split())
         should_run_llm = (
             not skip_llm
             and self.analyzer.is_llm_available
             and (
                 len(pattern_matches) > 0        # confirm pattern matches
-                or len(keyword_hits) > 1        # multiple keyword signals
+                or len(keyword_hits) > 0        # any keyword signal
                 or len(behavioral_flags) > 0    # behavioral anomaly
-                or len(text) > 100              # non-trivial input
+                or word_count >= 4              # any real sentence / request
             )
         )
 

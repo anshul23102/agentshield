@@ -1,8 +1,10 @@
+import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Link } from 'react-router-dom'
 import { Shield, Zap, ShieldCheck, Brain, ArrowRight } from 'lucide-react'
 import InteractiveBackground from '../components/ui/InteractiveBackground'
 import ParticleBackground from '../components/ui/ParticleBackground'
+import { getStatus } from '../utils/api'
 
 const FEATURES = [
   {
@@ -24,6 +26,11 @@ const FEATURES = [
 
 export default function Landing() {
   const AppleEase = [0.25, 0, 0, 1]
+  const [liveStatus, setLiveStatus] = useState(null)
+
+  useEffect(() => {
+    getStatus().then(setLiveStatus).catch(() => {})
+  }, [])
 
   return (
     <div className="min-h-screen bg-[#050505] text-[#F5F5F7] relative overflow-x-hidden" style={{
@@ -132,7 +139,7 @@ export default function Landing() {
             {FEATURES.map((f, i) => {
               const Icon = f.icon
               return (
-                <div key={i} className="card-flat p-5 space-y-4">
+                <div key={i} className="glass-elevated glass-sheen morphic-hover p-5 space-y-4">
                   <div className="w-10 h-10 rounded-xl bg-[#0071E3]/12 border border-[#0071E3]/25 flex items-center justify-center">
                     <Icon size={18} color="#0071E3" />
                   </div>
@@ -223,7 +230,7 @@ export default function Landing() {
                 </p>
               </div>
 
-              <div className="divide-y divide-white/[0.08] card-flat px-4">
+              <div className="divide-y divide-white/[0.08] glass-elevated px-4">
                 <div className="py-4 flex items-center justify-between text-[13px]">
                   <span className="font-medium text-[#ffffff]">Prompt Intercept Speed</span>
                   <span className="text-[#D1D1D6] font-mono">&lt; 1.2ms</span>
@@ -243,25 +250,52 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* Testimonial Strip */}
+      {/* Live Engine Status Strip — real numbers from the running backend */}
       <section className="py-24 bg-[#050505] border-t border-white/[0.06] relative z-10">
-        <div className="max-w-[1200px] mx-auto px-6 text-center">
+        <div className="max-w-[1200px] mx-auto px-6">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.6, ease: AppleEase }}
-            className="max-w-[800px] mx-auto space-y-5"
+            className="text-center space-y-3 mb-12"
           >
-            <p 
-              className="text-[24px] md:text-[32px] font-light italic leading-relaxed text-[#ffffff]"
-              style={{ fontFamily: '"Plus Jakarta Sans", sans-serif' }}
-            >
-              "AgentShield allows our autonomous support agents to communicate with user databases safely without exposing API tokens or credentials."
-            </p>
-            <div className="text-[12px] uppercase tracking-[0.1em] font-semibold text-[#D1D1D6]">
-              Security Operations Group, FinTech Inc.
+            <div className="text-[11px] font-semibold tracking-[0.2em] text-[#0071E3] uppercase">
+              Live Engine Telemetry
             </div>
+            <h2
+              className="text-[32px] md:text-[40px] font-bold text-[#ffffff]"
+              style={{ fontFamily: '"Outfit", sans-serif' }}
+            >
+              These numbers come from the running engine.
+            </h2>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ delay: 0.15, duration: 0.6, ease: AppleEase }}
+            className="grid grid-cols-2 md:grid-cols-4 gap-4"
+          >
+            {[
+              { value: liveStatus?.pattern_count ?? '—', label: 'Input Signatures Loaded' },
+              { value: liveStatus?.output_pattern_count ?? '—', label: 'Output Leak Signatures' },
+              { value: liveStatus?.llm_available ? 'Active' : 'Pattern Mode', label: 'Model Analysis Layer' },
+              { value: liveStatus?.total_messages?.toLocaleString() ?? '—', label: 'Messages Inspected' },
+            ].map((s, i) => (
+              <div key={i} className="glass-panel rounded-2xl p-6 text-center morphic-hover">
+                <div
+                  className="text-[36px] font-bold text-[#ffffff] leading-none"
+                  style={{ fontFamily: '"Outfit", sans-serif' }}
+                >
+                  {s.value}
+                </div>
+                <div className="text-[11px] uppercase tracking-[0.08em] font-semibold text-[#D1D1D6] mt-3">
+                  {s.label}
+                </div>
+              </div>
+            ))}
           </motion.div>
         </div>
       </section>
@@ -289,7 +323,7 @@ export default function Landing() {
               <h4 className="font-semibold text-[#ffffff]">Developer</h4>
               <div className="flex flex-col gap-2.5">
                 <a href="https://github.com/anshul23102/agentshield" target="_blank" rel="noreferrer" className="hover:text-[#ffffff] transition-colors">GitHub Repository</a>
-                <span className="cursor-not-allowed">API Status: Operational</span>
+                <a href="https://agentshield-api-658e.onrender.com/status" target="_blank" rel="noreferrer" className="hover:text-[#ffffff] transition-colors">API Status</a>
               </div>
             </div>
             <div className="space-y-4">
@@ -305,8 +339,7 @@ export default function Landing() {
               &copy; {new Date().getFullYear()} AgentShield Platform. All rights reserved.
             </div>
             <div className="flex gap-6">
-              <span>Surgical Whitespace Grid</span>
-              <span>Inspired by Cupertino</span>
+              <span>Built for Microsoft Build AI 2026</span>
             </div>
           </div>
         </div>

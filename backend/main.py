@@ -11,9 +11,10 @@ import uuid
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, BackgroundTasks, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, BackgroundTasks, HTTPException, Request, Header
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -33,12 +34,65 @@ ws_clients: set[WebSocket] = set()
 event_queue: asyncio.Queue = asyncio.Queue(maxsize=1000)
 
 admin_settings = {
-    "demo_traffic_enabled": True
+    "demo_traffic_enabled": os.getenv("AGENTSHIELD_DEMO_TRAFFIC", "true").lower() == "true"
 }
 
 MAX_INSPECT_CHARS = int(os.getenv("AGENTSHIELD_MAX_INSPECT_CHARS", "50000"))
 MAX_OUTPUT_SCAN_CHARS = int(os.getenv("AGENTSHIELD_MAX_OUTPUT_SCAN_CHARS", "100000"))
 MAX_BATCH_ITEMS = int(os.getenv("AGENTSHIELD_MAX_BATCH_ITEMS", "50"))
+MAX_WS_CLIENTS = int(os.getenv("AGENTSHIELD_MAX_WS_CLIENTS", "200"))
+RATE_LIMIT_PER_MINUTE = int(os.getenv("AGENTSHIELD_RATE_LIMIT_PER_MINUTE", "120"))
+ADMIN_KEY = os.getenv("AGENTSHIELD_ADMIN_KEY", "")
+ALLOWED_ORIGINS = [o.strip() for o in os.getenv("AGENTSHIELD_ALLOWED_ORIGINS", "*").split(",")]
+
+
+# ── Rate limiter (sliding window, per client IP) ─────────────────────────────
+
+class RateLimiter:
+    """In-memory sliding-window limiter. Per-IP, applies to inspection routes."""
+
+    def __init__(self, limit: int, window_seconds: int = 60):
+        self.limit = limit
+        self.window = window_seconds
+        self._hits: dict[str, list[float]] = {}
+        self._last_sweep = time.time()
+
+    def allow(self, client_id: str) -> bool:
+        now = time.time()
+        # Periodic sweep so idle clients don't accumulate forever
+        if now - self._last_sweep > 300:
+            cutoff = now - self.window
+            self._hits = {
+                k: [t for t in v if t > cutoff]
+                for k, v in self._hits.items()
+                if v and v[-1] > cutoff
+            }
+            self._last_sweep = now
+        hits = self._hits.setdefault(client_id, [])
+        cutoff = now - self.window
+        while hits and hits[0] <= cutoff:
+            hits.pop(0)
+        if len(hits) >= self.limit:
+            return False
+        hits.append(now)
+        return True
+
+
+rate_limiter = RateLimiter(RATE_LIMIT_PER_MINUTE)
+
+
+def check_rate_limit(request: Request):
+    client_ip = request.headers.get("x-forwarded-for", "").split(",")[0].strip() \
+        or (request.client.host if request.client else "unknown")
+    if not rate_limiter.allow(client_ip):
+        raise HTTPException(429, "Rate limit exceeded. Try again shortly.")
+
+
+def require_admin(x_admin_key: Optional[str]):
+    """Admin routes are open when no key is configured (demo mode),
+    enforced when AGENTSHIELD_ADMIN_KEY is set (production mode)."""
+    if ADMIN_KEY and x_admin_key != ADMIN_KEY:
+        raise HTTPException(403, "Invalid or missing admin key.")
 
 
 async def demo_threat_generator():
@@ -164,7 +218,9 @@ async def demo_threat_generator():
             # 50% threat event, 30% safe request, 20% leak event
             roll = random.random()
             
-            session_id = f"sess_{random.randint(1000, 9999)}"
+            # Demo events carry a distinct session prefix and source marker so
+            # they are never mistaken for real inspected traffic.
+            session_id = f"demo_{random.randint(1000, 9999)}"
             agent_name = random.choice(["SupportAgent", "EmailSummarizer", "DataPipelineAgent", "HRPortalBot"])
             
             if roll < 0.5:
@@ -205,12 +261,13 @@ async def demo_threat_generator():
                     "mitigation": "Prompt blocked or sanitized.",
                     "session_id": session_id,
                     "agent_name": agent_name,
-                    "timestamp": ts
+                    "timestamp": ts,
+                    "source": "demo"
                 }
-                
+
                 await log_event(result_dict, scenario["text"], session_id)
-                await broadcast({"type": "threat_event", **result_dict})
-                
+                await broadcast({"type": "threat_event", "input_preview": scenario["text"][:200], **result_dict})
+
             elif roll < 0.8:
                 # Safe event
                 text = random.choice(safe_prompts)
@@ -231,12 +288,13 @@ async def demo_threat_generator():
                     "mitigation": "",
                     "session_id": session_id,
                     "agent_name": agent_name,
-                    "timestamp": ts
+                    "timestamp": ts,
+                    "source": "demo"
                 }
-                
+
                 await log_event(result_dict, text, session_id)
-                await broadcast({"type": "threat_event", **result_dict})
-                
+                await broadcast({"type": "threat_event", "input_preview": text[:200], **result_dict})
+
             else:
                 # Leak event
                 scenario = random.choice(leak_scenarios)
@@ -283,10 +341,17 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(GZipMiddleware, minimum_size=1024)
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    # Never leak stack traces or internals to clients
+    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
 
 # ── WebSocket broadcast ───────────────────────────────────────────────────────
@@ -317,6 +382,9 @@ async def broadcast(event: dict):
 
 @app.websocket("/ws/live")
 async def websocket_live(websocket: WebSocket):
+    if len(ws_clients) >= MAX_WS_CLIENTS:
+        await websocket.close(code=1013)  # try again later
+        return
     await websocket.accept()
     ws_clients.add(websocket)
     try:
@@ -357,7 +425,8 @@ class OutputScanRequest(BaseModel):
 # ── Core endpoints ────────────────────────────────────────────────────────────
 
 @app.post("/api/inspect")
-async def inspect(req: InspectRequest, background_tasks: BackgroundTasks):
+async def inspect(req: InspectRequest, background_tasks: BackgroundTasks, request: Request):
+    check_rate_limit(request)
     if not req.text or not req.text.strip():
         raise HTTPException(400, "text cannot be empty")
     if len(req.text) > MAX_INSPECT_CHARS:
@@ -375,15 +444,21 @@ async def inspect(req: InspectRequest, background_tasks: BackgroundTasks):
     result_dict["agent_name"] = req.agent_name
     result_dict["timestamp"] = time.time()
 
+    # Live-feed rows need the prompt preview just like persisted DB rows do,
+    # so the dashboard shows the same text live and after a refresh.
+    preview = req.text[:200].replace("\n", " ")
+    broadcast_payload = {"type": "threat_event", "input_preview": preview, **result_dict}
+
     # Non-blocking DB write and WebSocket broadcast
     background_tasks.add_task(log_event, result_dict, req.text, session_id)
-    background_tasks.add_task(broadcast, {"type": "threat_event", **result_dict})
+    background_tasks.add_task(broadcast, broadcast_payload)
 
     return result_dict
 
 
 @app.post("/api/inspect/batch")
-async def inspect_batch(req: BatchInspectRequest):
+async def inspect_batch(req: BatchInspectRequest, request: Request):
+    check_rate_limit(request)
     if len(req.items) > MAX_BATCH_ITEMS:
         raise HTTPException(400, f"Max {MAX_BATCH_ITEMS} items per batch")
     for idx, item in enumerate(req.items):
@@ -400,9 +475,18 @@ async def inspect_batch(req: BatchInspectRequest):
         detector.inspect(text=item.text, session_id=session_id, skip_llm=item.skip_llm)
         for item, session_id in normalized_items
     ]
-    results = await asyncio.gather(*tasks)
+    # One failed item must not fail the whole batch
+    results = await asyncio.gather(*tasks, return_exceptions=True)
     payload = []
     for result, (item, session_id) in zip(results, normalized_items):
+        if isinstance(result, Exception):
+            payload.append({
+                "error": "inspection_failed",
+                "session_id": session_id,
+                "agent_name": item.agent_name,
+                "timestamp": time.time(),
+            })
+            continue
         d = result.to_dict()
         d["session_id"] = session_id
         d["agent_name"] = item.agent_name
@@ -412,11 +496,12 @@ async def inspect_batch(req: BatchInspectRequest):
 
 
 @app.post("/api/scan/output")
-async def scan_output(req: OutputScanRequest):
+async def scan_output(req: OutputScanRequest, request: Request):
     """
     Bidirectional protection: scan an AGENT OUTPUT for data leakage
     (secrets, PII, financial data, system prompt leaks) and redact before transmission.
     """
+    check_rate_limit(request)
     if not req.text or not req.text.strip():
         raise HTTPException(400, "text cannot be empty")
     if len(req.text) > MAX_OUTPUT_SCAN_CHARS:
@@ -507,7 +592,7 @@ async def demo_leaks():
 
 @app.get("/api/events/recent")
 async def recent_events(limit: int = 50):
-    limit = min(limit, 500)
+    limit = max(1, min(limit, 500))
     events = await get_recent_events(limit)
     return {"events": events, "count": len(events)}
 
@@ -873,19 +958,22 @@ async def demo_attacks():
 # ── Admin Operations ─────────────────────────────────────────────────────────
 
 @app.post("/api/admin/clear-cache")
-async def clear_cache():
+async def clear_cache(x_admin_key: Optional[str] = Header(None)):
+    require_admin(x_admin_key)
     detector.analyzer.clear_cache()
     return {"status": "success", "message": "LLM Analysis cache cleared."}
 
 
 @app.post("/api/admin/reset-sessions")
-async def reset_sessions():
+async def reset_sessions(x_admin_key: Optional[str] = Header(None)):
+    require_admin(x_admin_key)
     detector.session_manager._sessions.clear()
     return {"status": "success", "message": "All session states wiped."}
 
 
 @app.post("/api/admin/toggle-generator")
-async def toggle_generator():
+async def toggle_generator(x_admin_key: Optional[str] = Header(None)):
+    require_admin(x_admin_key)
     admin_settings["demo_traffic_enabled"] = not admin_settings["demo_traffic_enabled"]
     return {
         "status": "success",
