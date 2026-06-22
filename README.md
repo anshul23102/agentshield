@@ -20,8 +20,6 @@ Backend docs: https://agentshield-api-658e.onrender.com/docs
 
 GitHub repository: https://github.com/anshul23102/agentshield
 
-Demo video: https://youtu.be/lZt94DadPcc
-
 ## Microsoft AI Stack
 
 AgentShield uses GitHub Models through Azure AI Foundry for optional model-based threat analysis in Layer 3 of the detection pipeline. GitHub Models provides access to GPT-4o-mini within the free tier.
