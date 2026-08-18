@@ -108,9 +108,14 @@ function InsightCard({ title, body, color, delay = 0 }) {
   )
 }
 
+function isSynthetic(ev) {
+  return ev.source === 'demo' || (typeof ev.session_id === 'string' && ev.session_id.startsWith('demo_'))
+}
+
 function FeedRow({ ev, i }) {
   const colors = { block: '#ff453a', warn: '#ff9f0a', allow: '#30d158' }
   const color = colors[ev.action] || '#86868b'
+  const synthetic = isSynthetic(ev)
   const ts = ev.timestamp
     ? new Date(ev.timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     : '-'
@@ -122,13 +127,25 @@ function FeedRow({ ev, i }) {
       transition={{ delay: i * 0.02, duration: 0.25 }}
       className="threat-row"
       style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}
+      title={synthetic ? 'Synthetic demo event, not real inspected traffic' : undefined}
     >
       <div style={{ width: 7, height: 7, borderRadius: '50%', background: color, flexShrink: 0, boxShadow: `0 0 10px ${color}` }} />
       <span className={`badge badge-${ev.action}`} style={{ width: 62, justifyContent: 'center' }}>
         {ev.action}
       </span>
-      <span style={{ fontSize: 12, color: '#ffffff', fontFamily: '"Plus Jakarta Sans", sans-serif', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500 }}>
-        {ev.input_preview || ev.threat_category || '-'}
+      <span style={{ fontSize: 12, color: '#ffffff', fontFamily: '"Plus Jakarta Sans", sans-serif', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
+        {synthetic && (
+          <span style={{
+            fontSize: 8.5, fontWeight: 800, letterSpacing: '0.05em', color: '#c9a3ff',
+            background: 'rgba(191,143,255,0.14)', border: '1px solid rgba(191,143,255,0.3)',
+            borderRadius: 4, padding: '1.5px 5px', flexShrink: 0,
+          }}>
+            SYNTHETIC
+          </span>
+        )}
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {ev.input_preview || ev.threat_category || '-'}
+        </span>
       </span>
       <span style={{ fontSize: 12, fontFamily: 'monospace', color, flexShrink: 0, fontWeight: 700 }}>
         {ev.trust_score}

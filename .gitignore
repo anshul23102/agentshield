@@ -45,3 +45,12 @@ uvicorn.log
 make_pptx.js
 AgentShield_Deck.pptx
 AgentShield_Deck.pdf
+
+# SDK build artifacts
+sdk/dist/
+sdk/*.egg-info/
+
+# Test artifacts
+.coverage
+.pytest_cache/
+htmlcov/

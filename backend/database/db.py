@@ -11,15 +11,19 @@ import aiosqlite
 from pathlib import Path
 from typing import Optional
 
-DB_PATH = Path(__file__).parent.parent / "data" / "agentshield.db"
+from shield.input_redactor import redact_for_storage
+
+DB_PATH = Path(os.getenv("AGENTSHIELD_DB_PATH") or (Path(__file__).parent.parent / "data" / "agentshield.db"))
 EVENT_RETENTION_DAYS = int(os.getenv("AGENTSHIELD_EVENT_RETENTION_DAYS", "30"))
 EVENT_CLEANUP_INTERVAL_SECONDS = int(os.getenv("AGENTSHIELD_EVENT_CLEANUP_INTERVAL_SECONDS", "3600"))
+SEED_DEMO_DATA = os.getenv("AGENTSHIELD_SEED_DATA", "false").lower() == "true"
 
 
 CREATE_TABLES = """
 CREATE TABLE IF NOT EXISTS threat_events (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp     REAL    NOT NULL,
+    tenant_id     TEXT,
     session_id    TEXT,
     input_hash    TEXT,
     input_preview TEXT,
@@ -37,6 +41,7 @@ CREATE TABLE IF NOT EXISTS threat_events (
 CREATE INDEX IF NOT EXISTS idx_threat_events_timestamp ON threat_events(timestamp);
 CREATE INDEX IF NOT EXISTS idx_threat_events_action    ON threat_events(action);
 CREATE INDEX IF NOT EXISTS idx_threat_events_session   ON threat_events(session_id);
+CREATE INDEX IF NOT EXISTS idx_threat_events_tenant    ON threat_events(tenant_id);
 
 CREATE TABLE IF NOT EXISTS pattern_hit_stats (
     pattern_id  TEXT    PRIMARY KEY,
@@ -52,6 +57,17 @@ CREATE TABLE IF NOT EXISTS daily_stats (
     allowed     INTEGER DEFAULT 0,
     avg_score   REAL    DEFAULT 100.0
 );
+
+CREATE TABLE IF NOT EXISTS api_keys (
+    id            TEXT    PRIMARY KEY,
+    key_hash      TEXT    NOT NULL UNIQUE,
+    label         TEXT,
+    created_at    REAL    NOT NULL,
+    last_used_at  REAL,
+    revoked       INTEGER DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash);
 """
 
 
@@ -359,26 +375,38 @@ async def init_db():
         await db.execute("PRAGMA synchronous=NORMAL")
         await db.executescript(CREATE_TABLES)
         await db.commit()
-        await seed_database_if_empty(db)
+        if SEED_DEMO_DATA:
+            await seed_database_if_empty(db)
 
 
-async def log_event(result_dict: dict, input_text: str, session_id: Optional[str] = None):
+async def purge_expired_events() -> int:
+    """Delete threat_events older than EVENT_RETENTION_DAYS. Returns rows deleted."""
+    cutoff = time.time() - (EVENT_RETENTION_DAYS * 86400)
+    async with get_db_conn() as db:
+        cursor = await db.execute("DELETE FROM threat_events WHERE timestamp < ?", (cutoff,))
+        await db.commit()
+        return cursor.rowcount if cursor.rowcount is not None else 0
+
+
+async def log_event(result_dict: dict, input_text: str, session_id: Optional[str] = None,
+                     tenant_id: Optional[str] = None):
     import hashlib
     async with get_db_conn() as db:
         await db.execute("BEGIN TRANSACTION")
         try:
             input_hash = hashlib.sha256(input_text.encode()).hexdigest()[:16]
-            input_preview = input_text[:200].replace("\n", " ")
+            input_preview = redact_for_storage(input_text[:200].replace("\n", " "))
             pattern_ids = json.dumps([m["id"] for m in result_dict.get("pattern_matches", [])])
 
             ts = time.time()
             await db.execute(
                 """INSERT INTO threat_events
-                   (timestamp, session_id, input_hash, input_preview, action, trust_score,
+                   (timestamp, tenant_id, session_id, input_hash, input_preview, action, trust_score,
                     threat_category, threat_level, pattern_ids, llm_used, processing_ms, reasoning)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     ts,
+                    tenant_id,
                     session_id,
                     input_hash,
                     input_preview,
@@ -435,39 +463,55 @@ async def log_event(result_dict: dict, input_text: str, session_id: Optional[str
             raise e
 
 
-async def get_recent_events(limit: int = 50) -> list[dict]:
+async def get_recent_events(limit: int = 50, tenant_id: Optional[str] = None) -> list[dict]:
     async with get_db_conn() as db:
-        async with db.execute(
-            "SELECT * FROM threat_events ORDER BY timestamp DESC LIMIT ?", (limit,)
-        ) as cursor:
+        if tenant_id is not None:
+            query = "SELECT * FROM threat_events WHERE tenant_id = ? ORDER BY timestamp DESC LIMIT ?"
+            params = (tenant_id, limit)
+        else:
+            query = "SELECT * FROM threat_events ORDER BY timestamp DESC LIMIT ?"
+            params = (limit,)
+        async with db.execute(query, params) as cursor:
             rows = await cursor.fetchall()
         return [dict(row) for row in rows]
 
 
-async def get_analytics() -> dict:
+async def get_analytics(tenant_id: Optional[str] = None) -> dict:
+    # tenant_id scopes everything queried directly from threat_events (which
+    # holds actual prompt content) to the caller's own traffic. daily_stats and
+    # pattern_hit_stats are separate aggregate-only tables with no tenant column
+    # by design - they carry counts, never content, and are treated as shared,
+    # non-identifying threat intelligence across all callers (the same tradeoff
+    # most multi-tenant security products make for pattern telemetry).
+    tenant_clause = "WHERE tenant_id = ?" if tenant_id is not None else ""
+    tenant_and_clause = "AND tenant_id = ?" if tenant_id is not None else ""
+    tenant_params = (tenant_id,) if tenant_id is not None else ()
+
     async with get_db_conn() as db:
         # Total stats
         async with db.execute(
-            "SELECT COUNT(*) as total, SUM(action='block') as blocked, "
-            "SUM(action='warn') as warned, SUM(action='allow') as allowed, "
-            "AVG(trust_score) as avg_score FROM threat_events"
+            f"SELECT COUNT(*) as total, SUM(action='block') as blocked, "
+            f"SUM(action='warn') as warned, SUM(action='allow') as allowed, "
+            f"AVG(trust_score) as avg_score FROM threat_events {tenant_clause}",
+            tenant_params,
         ) as cur:
             totals = dict(await cur.fetchone() or {})
 
         # Category breakdown
         async with db.execute(
-            "SELECT threat_category, COUNT(*) as count FROM threat_events "
-            "WHERE threat_category IS NOT NULL GROUP BY threat_category ORDER BY count DESC"
+            f"SELECT threat_category, COUNT(*) as count FROM threat_events "
+            f"WHERE threat_category IS NOT NULL {tenant_and_clause} GROUP BY threat_category ORDER BY count DESC",
+            tenant_params,
         ) as cur:
             categories = [dict(row) for row in await cur.fetchall()]
 
-        # Daily trend (last 7 days)
+        # Daily trend (last 7 days) - shared aggregate, see docstring above
         async with db.execute(
             "SELECT * FROM daily_stats ORDER BY date DESC LIMIT 7"
         ) as cur:
             daily = [dict(row) for row in await cur.fetchall()]
 
-        # Top triggered patterns
+        # Top triggered patterns - shared aggregate, see docstring above
         async with db.execute(
             "SELECT pattern_id, hit_count FROM pattern_hit_stats ORDER BY hit_count DESC LIMIT 10"
         ) as cur:
@@ -475,17 +519,19 @@ async def get_analytics() -> dict:
 
         # Threat level breakdown
         async with db.execute(
-            "SELECT threat_level, COUNT(*) as count FROM threat_events "
-            "WHERE threat_level IS NOT NULL GROUP BY threat_level"
+            f"SELECT threat_level, COUNT(*) as count FROM threat_events "
+            f"WHERE threat_level IS NOT NULL {tenant_and_clause} GROUP BY threat_level",
+            tenant_params,
         ) as cur:
             levels = [dict(row) for row in await cur.fetchall()]
 
         # Hourly distribution today
         async with db.execute(
-            "SELECT CAST(strftime('%H', datetime(timestamp, 'unixepoch')) AS INT) as hour, "
-            "COUNT(*) as count FROM threat_events "
-            "WHERE date(datetime(timestamp, 'unixepoch')) = date('now') "
-            "GROUP BY hour ORDER BY hour"
+            f"SELECT CAST(strftime('%H', datetime(timestamp, 'unixepoch')) AS INT) as hour, "
+            f"COUNT(*) as count FROM threat_events "
+            f"WHERE date(datetime(timestamp, 'unixepoch')) = date('now') {tenant_and_clause} "
+            f"GROUP BY hour ORDER BY hour",
+            tenant_params,
         ) as cur:
             hourly = [dict(row) for row in await cur.fetchall()]
 
@@ -497,3 +543,42 @@ async def get_analytics() -> dict:
             "threat_levels": levels,
             "hourly_today": hourly,
         }
+
+
+# ── API keys ──────────────────────────────────────────────────────────────────
+
+async def insert_api_key(key_id: str, key_hash: str, label: Optional[str]) -> None:
+    async with get_db_conn() as db:
+        await db.execute(
+            "INSERT INTO api_keys (id, key_hash, label, created_at) VALUES (?, ?, ?, ?)",
+            (key_id, key_hash, label, time.time()),
+        )
+        await db.commit()
+
+
+async def get_api_key_by_hash(key_hash: str) -> Optional[dict]:
+    async with get_db_conn() as db:
+        async with db.execute(
+            "SELECT * FROM api_keys WHERE key_hash = ? AND revoked = 0", (key_hash,)
+        ) as cur:
+            row = await cur.fetchone()
+        return dict(row) if row else None
+
+
+async def touch_api_key_last_used(key_id: str) -> None:
+    async with get_db_conn() as db:
+        await db.execute("UPDATE api_keys SET last_used_at = ? WHERE id = ?", (time.time(), key_id))
+        await db.commit()
+
+
+async def list_api_keys() -> list[dict]:
+    async with get_db_conn() as db:
+        async with db.execute("SELECT id, label, created_at, last_used_at, revoked FROM api_keys ORDER BY created_at DESC") as cur:
+            return [dict(row) for row in await cur.fetchall()]
+
+
+async def revoke_api_key(key_id: str) -> bool:
+    async with get_db_conn() as db:
+        cursor = await db.execute("UPDATE api_keys SET revoked = 1 WHERE id = ?", (key_id,))
+        await db.commit()
+        return cursor.rowcount > 0

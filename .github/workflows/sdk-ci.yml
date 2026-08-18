@@ -1,0 +1,36 @@
+name: SDK CI
+
+on:
+  push:
+    branches: [main]
+    paths: ["sdk/**", ".github/workflows/sdk-ci.yml"]
+  pull_request:
+    branches: [main]
+    paths: ["sdk/**", ".github/workflows/sdk-ci.yml"]
+
+concurrency:
+  group: sdk-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-import:
+    name: Build wheel and verify import
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sdk
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11.11"
+
+      - name: Build and install the package
+        run: |
+          pip install build
+          python -m build
+          pip install dist/*.whl
+
+      - name: Verify the package actually imports (the thing the README promises)
+        run: python -c "from agentshield_sdk import AgentShield, ShieldedSession, ShieldResult; print('OK:', AgentShield)"

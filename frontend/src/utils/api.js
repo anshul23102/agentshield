@@ -4,7 +4,21 @@ const BASE = import.meta.env.VITE_API_URL
   ? `${import.meta.env.VITE_API_URL}/api`
   : '/api'
 
-export const api = axios.create({ baseURL: BASE, timeout: 15000 })
+// The server requires an API key on every inspect/scan/analytics call.
+// This dashboard is a first-party admin console for a self-hosted instance -
+// the person viewing it in a browser IS the operator, so both keys travel in
+// the bundle sent to that browser. Do not deploy this dashboard build
+// somewhere untrusted users can load it; the keys would be visible to them.
+const API_KEY = import.meta.env.VITE_API_KEY
+const ADMIN_KEY = import.meta.env.VITE_ADMIN_KEY
+
+export const api = axios.create({
+  baseURL: BASE,
+  timeout: 15000,
+  headers: API_KEY ? { 'X-API-Key': API_KEY } : {},
+})
+
+const adminHeaders = ADMIN_KEY ? { 'X-Admin-Key': ADMIN_KEY } : {}
 
 export const inspect = (text, sessionId, skipLlm = false) =>
   api.post('/inspect', { text, session_id: sessionId, skip_llm: skipLlm }).then(r => r.data)
@@ -39,14 +53,17 @@ export const getDemoLeaks = () =>
 export const getSessionStats = (sessionId) =>
   api.get(`/session/${sessionId}`).then(r => r.data)
 
+export const getWsTicket = () =>
+  api.post('/ws-ticket').then(r => r.data)
+
 export const getAdminConfig = () =>
-  api.get('/admin/config').then(r => r.data)
+  api.get('/admin/config', { headers: adminHeaders }).then(r => r.data)
 
 export const toggleDemoTraffic = () =>
-  api.post('/admin/toggle-generator').then(r => r.data)
+  api.post('/admin/toggle-generator', null, { headers: adminHeaders }).then(r => r.data)
 
 export const clearLLMCache = () =>
-  api.post('/admin/clear-cache').then(r => r.data)
+  api.post('/admin/clear-cache', null, { headers: adminHeaders }).then(r => r.data)
 
 export const resetSessions = () =>
-  api.post('/admin/reset-sessions').then(r => r.data)
+  api.post('/admin/reset-sessions', null, { headers: adminHeaders }).then(r => r.data)

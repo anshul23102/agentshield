@@ -6,12 +6,14 @@ FastAPI backend with WebSocket support for live dashboard updates.
 import asyncio
 import json
 import os
+import secrets
 import time
 import uuid
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, BackgroundTasks, HTTPException, Request, Header
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, BackgroundTasks, HTTPException, Request, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -22,7 +24,12 @@ from dotenv import load_dotenv
 from shield import ThreatDetector
 from shield.patterns import ATTACK_PATTERNS, ThreatCategory, ThreatLevel, CATEGORY_STATS, LEVEL_STATS
 from shield.output_guard import OutputGuard, LEAK_PATTERNS, LEAK_CATEGORY_STATS
-from database.db import log_event, get_recent_events, get_analytics, init_db
+from shield.auth import require_api_key, ApiKeyRecord, create_api_key
+from database.db import (
+    log_event, get_recent_events, get_analytics, init_db,
+    purge_expired_events, EVENT_RETENTION_DAYS, EVENT_CLEANUP_INTERVAL_SECONDS,
+    list_api_keys, revoke_api_key,
+)
 
 # ── Global state ─────────────────────────────────────────────────────────────
 
@@ -30,11 +37,11 @@ load_dotenv()
 
 detector = ThreatDetector()
 output_guard = OutputGuard()
-ws_clients: set[WebSocket] = set()
+ws_clients: dict[WebSocket, str] = {}  # websocket -> tenant_id (API key id)
 event_queue: asyncio.Queue = asyncio.Queue(maxsize=1000)
 
 admin_settings = {
-    "demo_traffic_enabled": os.getenv("AGENTSHIELD_DEMO_TRAFFIC", "true").lower() == "true"
+    "demo_traffic_enabled": os.getenv("AGENTSHIELD_DEMO_TRAFFIC", "false").lower() == "true"
 }
 
 MAX_INSPECT_CHARS = int(os.getenv("AGENTSHIELD_MAX_INSPECT_CHARS", "50000"))
@@ -42,14 +49,65 @@ MAX_OUTPUT_SCAN_CHARS = int(os.getenv("AGENTSHIELD_MAX_OUTPUT_SCAN_CHARS", "1000
 MAX_BATCH_ITEMS = int(os.getenv("AGENTSHIELD_MAX_BATCH_ITEMS", "50"))
 MAX_WS_CLIENTS = int(os.getenv("AGENTSHIELD_MAX_WS_CLIENTS", "200"))
 RATE_LIMIT_PER_MINUTE = int(os.getenv("AGENTSHIELD_RATE_LIMIT_PER_MINUTE", "120"))
-ADMIN_KEY = os.getenv("AGENTSHIELD_ADMIN_KEY", "")
 ALLOWED_ORIGINS = [o.strip() for o in os.getenv("AGENTSHIELD_ALLOWED_ORIGINS", "*").split(",")]
 
+# Only trust this many hops of X-Forwarded-For, counted from the right (closest
+# to us). 0 (default) means "trust nothing but the direct socket peer" - the
+# safe default when there's no reverse proxy in front of this process. Set to
+# 1 behind a single trusted proxy (Render, most standard nginx setups), etc.
+TRUSTED_PROXY_COUNT = int(os.getenv("AGENTSHIELD_TRUSTED_PROXY_COUNT", "0"))
 
-# ── Rate limiter (sliding window, per client IP) ─────────────────────────────
+DATA_DIR = Path(__file__).parent / "data"
+
+
+def _load_or_create_admin_key() -> str:
+    """Admin routes always require a real key now - there is no 'open when
+    unset' mode anymore. If none is configured, one is generated once and
+    persisted locally so it survives restarts, and printed to the console."""
+    env_key = os.getenv("AGENTSHIELD_ADMIN_KEY", "")
+    if env_key:
+        return env_key
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    admin_key_file = DATA_DIR / ".admin_key"
+    if admin_key_file.exists():
+        return admin_key_file.read_text().strip()
+    generated = secrets.token_urlsafe(24)
+    admin_key_file.write_text(generated)
+    print(f"[startup] No AGENTSHIELD_ADMIN_KEY set. Generated one and saved it to {admin_key_file}")
+    print(f"[startup] Admin key: {generated}")
+    return generated
+
+
+ADMIN_KEY = _load_or_create_admin_key()
+
+
+# ── Rate limiter ──────────────────────────────────────────────────────────────
+# Two backends: a Redis-backed distributed limiter (survives restarts, correct
+# across multiple worker processes) when REDIS_URL is set, falling back to an
+# in-memory sliding window otherwise. Either way, the limiter is keyed by the
+# caller's authenticated API key id, not by IP/X-Forwarded-For - an
+# unauthenticated header is trivially spoofable and gets a client nothing but
+# a fresh in-memory bucket; a fresh identity now requires a fresh, admin-issued
+# API key, which is the actual choke point.
+
+REDIS_URL = os.getenv("REDIS_URL", "")
+_distributed_limiter = None
+_rate_limit_rule = None
+
+try:
+    from limits import parse as _parse_rate_limit
+    from limits.storage import storage_from_string as _storage_from_string
+    from limits.strategies import MovingWindowRateLimiter
+
+    _rate_limit_rule = _parse_rate_limit(f"{RATE_LIMIT_PER_MINUTE}/minute")
+    if REDIS_URL:
+        _distributed_limiter = MovingWindowRateLimiter(_storage_from_string(REDIS_URL))
+except Exception as exc:  # pragma: no cover - exercised only when `limits`/redis aren't available
+    print(f"[startup] Distributed rate limiting unavailable ({exc}); falling back to in-memory only.")
+
 
 class RateLimiter:
-    """In-memory sliding-window limiter. Per-IP, applies to inspection routes."""
+    """In-memory sliding-window limiter. Fallback when Redis isn't configured."""
 
     def __init__(self, limit: int, window_seconds: int = 60):
         self.limit = limit
@@ -81,18 +139,38 @@ class RateLimiter:
 rate_limiter = RateLimiter(RATE_LIMIT_PER_MINUTE)
 
 
-def check_rate_limit(request: Request):
-    client_ip = request.headers.get("x-forwarded-for", "").split(",")[0].strip() \
-        or (request.client.host if request.client else "unknown")
-    if not rate_limiter.allow(client_ip):
+def _client_ip(request: Request) -> str:
+    """Only honors X-Forwarded-For up to TRUSTED_PROXY_COUNT hops. With the
+    default of 0, an untrusted client's XFF header is ignored entirely - it
+    can claim to be any IP it likes and this simply won't listen."""
+    if TRUSTED_PROXY_COUNT > 0:
+        hops = [h.strip() for h in request.headers.get("x-forwarded-for", "").split(",") if h.strip()]
+        if len(hops) >= TRUSTED_PROXY_COUNT:
+            return hops[-TRUSTED_PROXY_COUNT]
+    return request.client.host if request.client else "unknown"
+
+
+def check_rate_limit(request: Request, key: ApiKeyRecord):
+    # Primary identity: the authenticated key. Not spoofable by header games.
+    identity = f"key:{key.id}"
+    if _distributed_limiter is not None and _rate_limit_rule is not None:
+        if not _distributed_limiter.hit(_rate_limit_rule, identity):
+            raise HTTPException(429, "Rate limit exceeded. Try again shortly.")
+        return
+    if not rate_limiter.allow(identity):
         raise HTTPException(429, "Rate limit exceeded. Try again shortly.")
 
 
 def require_admin(x_admin_key: Optional[str]):
-    """Admin routes are open when no key is configured (demo mode),
-    enforced when AGENTSHIELD_ADMIN_KEY is set (production mode)."""
-    if ADMIN_KEY and x_admin_key != ADMIN_KEY:
+    if x_admin_key != ADMIN_KEY:
         raise HTTPException(403, "Invalid or missing admin key.")
+
+
+def _scoped_session_id(key: ApiKeyRecord, session_id: str) -> str:
+    """Namespaces session state by tenant so two different API keys can never
+    collide on the same session_id string - closes the cross-tenant session
+    pollution / spoofed-trust-history gap."""
+    return f"{key.id}:{session_id}"
 
 
 async def demo_threat_generator():
@@ -308,6 +386,7 @@ async def demo_threat_generator():
                     "leak_summary": {scenario["leak_type"]: 1},
                     "session_id": session_id,
                     "timestamp": ts,
+                    "source": "demo",
                 })
                 
         except asyncio.CancelledError:
@@ -319,17 +398,38 @@ async def demo_threat_generator():
 
 # ── Lifespan ──────────────────────────────────────────────────────────────────
 
+async def _ensure_bootstrap_api_key():
+    """If no API keys exist yet, mint one so a fresh local setup still works
+    end to end with zero manual config. The raw key is persisted to a local,
+    gitignored file so start.sh / the frontend can pick it up automatically."""
+    if os.getenv("AGENTSHIELD_AUTO_BOOTSTRAP_KEY", "true").lower() != "true":
+        return
+    if await list_api_keys():
+        return
+    _key_id, raw_key = await create_api_key("bootstrap")
+    bootstrap_file = DATA_DIR / ".bootstrap_api_key"
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    bootstrap_file.write_text(raw_key)
+    print("[startup] No API keys existed - created a bootstrap key for local development.")
+    print(f"[startup] API key: {raw_key}")
+    print(f"[startup] Saved to {bootstrap_file}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Warm up DB
     await init_db()
+    await _ensure_bootstrap_api_key()
     # Start WebSocket broadcast worker
     task = asyncio.create_task(ws_broadcast_worker())
     # Start live traffic generator
     traffic_task = asyncio.create_task(demo_threat_generator())
+    # Enforce event retention (was previously dead config - never called anywhere)
+    retention_task = asyncio.create_task(retention_cleanup_worker())
     yield
     task.cancel()
     traffic_task.cancel()
+    retention_task.cancel()
 
 
 app = FastAPI(
@@ -355,41 +455,110 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 
 
 # ── WebSocket broadcast ───────────────────────────────────────────────────────
+# ws_clients maps each open connection to the tenant (API key id) it
+# authenticated as. broadcast() with a tenant_id only reaches that tenant's
+# own connections - this is what stops one caller from watching another
+# caller's live feed of inspected prompts. tenant_id=None (used only for the
+# synthetic demo generator) is delivered to everyone, since that content is
+# fabricated filler, never real inspected traffic.
 
 async def ws_broadcast_worker():
     while True:
         try:
-            event = await event_queue.get()
-            dead = set()
-            for ws in ws_clients.copy():
+            event, tenant_id = await event_queue.get()
+            dead = []
+            for ws, ws_tenant in list(ws_clients.items()):
+                if tenant_id is not None and ws_tenant != tenant_id:
+                    continue
                 try:
                     await ws.send_text(json.dumps(event))
                 except Exception:
-                    dead.add(ws)
-            ws_clients -= dead
+                    dead.append(ws)
+            for ws in dead:
+                ws_clients.pop(ws, None)
         except asyncio.CancelledError:
             break
         except Exception:
             await asyncio.sleep(0.1)
 
 
-async def broadcast(event: dict):
+async def broadcast(event: dict, tenant_id: Optional[str] = None):
     try:
-        event_queue.put_nowait(event)
+        event_queue.put_nowait((event, tenant_id))
     except asyncio.QueueFull:
         pass
 
 
+# ── Retention cleanup ─────────────────────────────────────────────────────────
+
+async def retention_cleanup_worker():
+    """Actually enforces AGENTSHIELD_EVENT_RETENTION_DAYS. Without this loop the
+    config exists but nothing ever calls it, and threat_events grows forever."""
+    while True:
+        try:
+            await asyncio.sleep(EVENT_CLEANUP_INTERVAL_SECONDS)
+            deleted = await purge_expired_events()
+            if deleted:
+                print(f"[retention] purged {deleted} event(s) older than {EVENT_RETENTION_DAYS}d")
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            print(f"[retention] cleanup pass failed: {e}")
+            await asyncio.sleep(5)
+
+
+# ── WebSocket tickets ─────────────────────────────────────────────────────────
+# A browser's native WebSocket API cannot set custom headers, so a long-lived
+# API key can't be attached to the handshake without sitting in the URL -
+# where it would leak into browser history, referrers, and proxy logs. So an
+# authenticated REST call exchanges a real API key for a short-lived,
+# single-use ticket, and only the disposable ticket goes in the WS URL.
+
+WS_TICKET_TTL_SECONDS = 60
+_ws_tickets: dict[str, tuple[str, float]] = {}  # ticket -> (tenant_id, expires_at)
+
+
+def _mint_ws_ticket(tenant_id: str) -> str:
+    now = time.time()
+    expired = [t for t, (_, exp) in _ws_tickets.items() if exp < now]
+    for t in expired:
+        _ws_tickets.pop(t, None)
+    ticket = secrets.token_urlsafe(24)
+    _ws_tickets[ticket] = (tenant_id, now + WS_TICKET_TTL_SECONDS)
+    return ticket
+
+
+def _consume_ws_ticket(ticket: str) -> Optional[str]:
+    entry = _ws_tickets.pop(ticket, None)  # single-use: pop, don't peek
+    if not entry:
+        return None
+    tenant_id, expires_at = entry
+    if expires_at < time.time():
+        return None
+    return tenant_id
+
+
+@app.post("/api/ws-ticket")
+async def issue_ws_ticket(request: Request, key: ApiKeyRecord = Depends(require_api_key)):
+    check_rate_limit(request, key)
+    ticket = _mint_ws_ticket(key.id)
+    return {"ticket": ticket, "expires_in": WS_TICKET_TTL_SECONDS}
+
+
 @app.websocket("/ws/live")
-async def websocket_live(websocket: WebSocket):
+async def websocket_live(websocket: WebSocket, ticket: Optional[str] = None):
     if len(ws_clients) >= MAX_WS_CLIENTS:
         await websocket.close(code=1013)  # try again later
         return
+    tenant_id = _consume_ws_ticket(ticket) if ticket else None
+    if not tenant_id:
+        await websocket.close(code=4401)  # custom: invalid/expired/missing ticket
+        return
     await websocket.accept()
-    ws_clients.add(websocket)
+    ws_clients[websocket] = tenant_id
     try:
-        # Send initial stats
-        recent = await get_recent_events(10)
+        # Send initial stats - scoped to this connection's own tenant only.
+        recent = await get_recent_events(10, tenant_id=tenant_id)
         await websocket.send_text(json.dumps({
             "type": "init",
             "recent_events": recent[:10],
@@ -398,9 +567,9 @@ async def websocket_live(websocket: WebSocket):
         while True:
             await websocket.receive_text()  # keep alive
     except WebSocketDisconnect:
-        ws_clients.discard(websocket)
+        ws_clients.pop(websocket, None)
     except Exception:
-        ws_clients.discard(websocket)
+        ws_clients.pop(websocket, None)
 
 
 # ── Request / Response models ─────────────────────────────────────────────────
@@ -425,8 +594,11 @@ class OutputScanRequest(BaseModel):
 # ── Core endpoints ────────────────────────────────────────────────────────────
 
 @app.post("/api/inspect")
-async def inspect(req: InspectRequest, background_tasks: BackgroundTasks, request: Request):
-    check_rate_limit(request)
+async def inspect(
+    req: InspectRequest, background_tasks: BackgroundTasks, request: Request,
+    key: ApiKeyRecord = Depends(require_api_key),
+):
+    check_rate_limit(request, key)
     if not req.text or not req.text.strip():
         raise HTTPException(400, "text cannot be empty")
     if len(req.text) > MAX_INSPECT_CHARS:
@@ -435,7 +607,7 @@ async def inspect(req: InspectRequest, background_tasks: BackgroundTasks, reques
     session_id = req.session_id or str(uuid.uuid4())
     result = await detector.inspect(
         text=req.text,
-        session_id=session_id,
+        session_id=_scoped_session_id(key, session_id),
         skip_llm=req.skip_llm,
     )
 
@@ -443,22 +615,23 @@ async def inspect(req: InspectRequest, background_tasks: BackgroundTasks, reques
     result_dict["session_id"] = session_id
     result_dict["agent_name"] = req.agent_name
     result_dict["timestamp"] = time.time()
+    result_dict["source"] = "live"
 
     # Live-feed rows need the prompt preview just like persisted DB rows do,
     # so the dashboard shows the same text live and after a refresh.
     preview = req.text[:200].replace("\n", " ")
-    broadcast_payload = {"type": "threat_event", "input_preview": preview, **result_dict}
+    broadcast_payload = {"type": "threat_event", "input_preview": preview, "tenant_id": key.id, **result_dict}
 
     # Non-blocking DB write and WebSocket broadcast
-    background_tasks.add_task(log_event, result_dict, req.text, session_id)
-    background_tasks.add_task(broadcast, broadcast_payload)
+    background_tasks.add_task(log_event, result_dict, req.text, session_id, key.id)
+    background_tasks.add_task(broadcast, broadcast_payload, key.id)
 
     return result_dict
 
 
 @app.post("/api/inspect/batch")
-async def inspect_batch(req: BatchInspectRequest, request: Request):
-    check_rate_limit(request)
+async def inspect_batch(req: BatchInspectRequest, request: Request, key: ApiKeyRecord = Depends(require_api_key)):
+    check_rate_limit(request, key)
     if len(req.items) > MAX_BATCH_ITEMS:
         raise HTTPException(400, f"Max {MAX_BATCH_ITEMS} items per batch")
     for idx, item in enumerate(req.items):
@@ -472,7 +645,7 @@ async def inspect_batch(req: BatchInspectRequest, request: Request):
         for item in req.items
     ]
     tasks = [
-        detector.inspect(text=item.text, session_id=session_id, skip_llm=item.skip_llm)
+        detector.inspect(text=item.text, session_id=_scoped_session_id(key, session_id), skip_llm=item.skip_llm)
         for item, session_id in normalized_items
     ]
     # One failed item must not fail the whole batch
@@ -496,12 +669,14 @@ async def inspect_batch(req: BatchInspectRequest, request: Request):
 
 
 @app.post("/api/scan/output")
-async def scan_output(req: OutputScanRequest, request: Request):
+async def scan_output(
+    req: OutputScanRequest, request: Request, key: ApiKeyRecord = Depends(require_api_key),
+):
     """
     Bidirectional protection: scan an AGENT OUTPUT for data leakage
     (secrets, PII, financial data, system prompt leaks) and redact before transmission.
     """
-    check_rate_limit(request)
+    check_rate_limit(request, key)
     if not req.text or not req.text.strip():
         raise HTTPException(400, "text cannot be empty")
     if len(req.text) > MAX_OUTPUT_SCAN_CHARS:
@@ -522,7 +697,8 @@ async def scan_output(req: OutputScanRequest, request: Request):
             "leak_summary": result.leak_summary,
             "session_id": req.session_id,
             "timestamp": time.time(),
-        })
+            "source": "live",
+        }, key.id)
 
     return payload
 
@@ -591,15 +767,15 @@ async def demo_leaks():
 
 
 @app.get("/api/events/recent")
-async def recent_events(limit: int = 50):
+async def recent_events(limit: int = 50, key: ApiKeyRecord = Depends(require_api_key)):
     limit = max(1, min(limit, 500))
-    events = await get_recent_events(limit)
+    events = await get_recent_events(limit, tenant_id=key.id)
     return {"events": events, "count": len(events)}
 
 
 @app.get("/api/analytics")
-async def analytics():
-    return await get_analytics()
+async def analytics(key: ApiKeyRecord = Depends(require_api_key)):
+    return await get_analytics(tenant_id=key.id)
 
 
 @app.get("/api/patterns")
@@ -627,10 +803,11 @@ async def list_patterns(category: Optional[str] = None, level: Optional[str] = N
 
 
 @app.get("/api/session/{session_id}")
-async def session_stats(session_id: str):
-    stats = detector.session_manager.get_session_stats(session_id)
+async def session_stats(session_id: str, key: ApiKeyRecord = Depends(require_api_key)):
+    stats = detector.session_manager.get_session_stats(_scoped_session_id(key, session_id))
     if not stats:
         raise HTTPException(404, "Session not found")
+    stats["session_id"] = session_id  # return the caller's own id, not the internal tenant-scoped one
     return stats
 
 
@@ -649,6 +826,10 @@ async def status():
             "max_inspect_chars": MAX_INSPECT_CHARS,
             "max_output_scan_chars": MAX_OUTPUT_SCAN_CHARS,
             "max_batch_items": MAX_BATCH_ITEMS,
+        },
+        "retention": {
+            "event_retention_days": EVENT_RETENTION_DAYS,
+            "cleanup_interval_seconds": EVENT_CLEANUP_INTERVAL_SECONDS,
         },
         **session_stats,
     }
@@ -983,9 +1164,39 @@ async def toggle_generator(x_admin_key: Optional[str] = Header(None)):
 
 
 @app.get("/api/admin/config")
-async def get_admin_config():
+async def get_admin_config(x_admin_key: Optional[str] = Header(None)):
+    require_admin(x_admin_key)
     return {
         "demo_traffic_enabled": admin_settings["demo_traffic_enabled"],
         "llm_cache_size": len(detector.analyzer._cache),
         "total_active_sessions": len(detector.session_manager._sessions),
     }
+
+
+# ── API key management (admin-only) ──────────────────────────────────────────
+
+class CreateApiKeyRequest(BaseModel):
+    label: Optional[str] = None
+
+
+@app.post("/api/admin/keys")
+async def admin_create_key(req: CreateApiKeyRequest, x_admin_key: Optional[str] = Header(None)):
+    require_admin(x_admin_key)
+    key_id, raw_key = await create_api_key(req.label)
+    return {"id": key_id, "key": raw_key, "label": req.label,
+            "warning": "This is the only time the raw key is shown. Store it now."}
+
+
+@app.get("/api/admin/keys")
+async def admin_list_keys(x_admin_key: Optional[str] = Header(None)):
+    require_admin(x_admin_key)
+    return {"keys": await list_api_keys()}
+
+
+@app.delete("/api/admin/keys/{key_id}")
+async def admin_revoke_key(key_id: str, x_admin_key: Optional[str] = Header(None)):
+    require_admin(x_admin_key)
+    revoked = await revoke_api_key(key_id)
+    if not revoked:
+        raise HTTPException(404, "Key not found")
+    return {"status": "success", "message": f"Key {key_id} revoked."}

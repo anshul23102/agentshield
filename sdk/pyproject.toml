@@ -1,0 +1,32 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "agentshield-sdk"
+version = "1.0.0"
+description = "Drop-in security wrapper for AI agent pipelines. Client SDK for the AgentShield API."
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+authors = [{ name = "Anshul Jain" }]
+keywords = ["llm", "security", "prompt-injection", "agent", "guardrails"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Topic :: Security",
+]
+dependencies = [
+  "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-asyncio", "respx"]
+
+[project.urls]
+Homepage = "https://github.com/anshul23102/agentshield"
+Repository = "https://github.com/anshul23102/agentshield"
+
+[tool.hatch.build.targets.wheel]
+packages = ["agentshield_sdk"]

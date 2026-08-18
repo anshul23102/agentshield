@@ -108,14 +108,18 @@ class LLMAnalyzer:
     def is_llm_available(self) -> bool:
         return self._client is not None
 
-    def _cache_key(self, text: str) -> str:
-        return hashlib.md5(text.encode()).hexdigest()
+    def _cache_key(self, text: str, context: Optional[str] = None) -> str:
+        # Must include context: the same sentence in a clean session vs. one
+        # mid-escalation is a materially different analysis question, and a
+        # cache hit that ignores context would silently reuse a verdict that
+        # never considered the surrounding conversation at all.
+        return hashlib.md5(f"{context or ''}\x00{text}".encode()).hexdigest()
 
     async def analyze(self, text: str, context: Optional[str] = None) -> Optional[LLMAnalysisResult]:
         if not self._client:
             return None
 
-        cache_key = self._cache_key(text)
+        cache_key = self._cache_key(text, context)
         if cache_key in self._cache:
             return self._cache[cache_key]
 

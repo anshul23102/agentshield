@@ -4,6 +4,7 @@ Drop-in security wrapper for any agent pipeline.
 """
 
 import httpx
+import os
 import uuid
 from dataclasses import dataclass
 from typing import Optional
@@ -63,23 +64,30 @@ class AgentShield:
     AgentShield client: wrap any agent call with one line.
 
     Example:
-        shield = AgentShield()
+        shield = AgentShield(api_key="ash_live_...")
         result = shield.inspect(user_input)
         if result.is_safe:
             response = agent.run(user_input)
+
+    The server requires an API key on every inspect/scan/analytics call. Pass
+    one explicitly, or set the AGENTSHIELD_API_KEY environment variable - issue
+    one with `python scripts/create_api_key.py "label"` on the server.
     """
 
     def __init__(
         self,
         base_url: str = "http://localhost:8000",
+        api_key: Optional[str] = None,
         timeout: float = 15.0,
         default_session_id: Optional[str] = None,
     ):
         self.base_url = base_url.rstrip("/")
+        self.api_key = api_key or os.getenv("AGENTSHIELD_API_KEY")
         self.timeout = timeout
         self.default_session_id = default_session_id
-        self._client = httpx.Client(base_url=self.base_url, timeout=timeout)
-        self._async_client = httpx.AsyncClient(base_url=self.base_url, timeout=timeout)
+        headers = {"X-API-Key": self.api_key} if self.api_key else {}
+        self._client = httpx.Client(base_url=self.base_url, timeout=timeout, headers=headers)
+        self._async_client = httpx.AsyncClient(base_url=self.base_url, timeout=timeout, headers=headers)
 
     def inspect(
         self,

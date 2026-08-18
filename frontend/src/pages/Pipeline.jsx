@@ -24,7 +24,7 @@ export default function Pipeline() {
   const [nodeStatuses, setNodeStatuses] = useState(Array(8).fill('idle')) // 'idle' | 'processing' | 'success' | 'failed' | 'warning' | 'redacted'
   const [selectedNode, setSelectedNode] = useState(0)
   const [liveLogs, setLiveLogs] = useState([
-    { id: 1, timestamp: new Date().toLocaleTimeString(), text: 'Pipeline guard initialized. Standing by.', type: 'info' }
+    { id: 1, timestamp: new Date().toLocaleTimeString(), text: 'Pipeline guard initialized. Standing by.', type: 'info', source: 'system' }
   ])
   const [animatingEvent, setAnimatingEvent] = useState(null)
   
@@ -37,14 +37,19 @@ export default function Pipeline() {
     }
   }, [liveLogs])
 
-  const addLiveLog = (text, type = 'info') => {
+  // source: 'live' = driven by a real WebSocket event from actual inspected
+  // traffic; 'sim' = triggered manually by the controls on this page; 'system'
+  // = page lifecycle messages, neither. Rendered as a tag so the log stream
+  // never lets a manually-triggered row look like real traffic.
+  const addLiveLog = (text, type = 'info', source = 'sim') => {
     setLiveLogs(prev => [
       ...prev,
       {
         id: Date.now() + Math.random(),
         timestamp: new Date().toLocaleTimeString(),
         text,
-        type
+        type,
+        source,
       }
     ].slice(-40)) // limit logs buffer
   }
@@ -56,11 +61,13 @@ export default function Pipeline() {
     if (msg.type === 'threat_event') {
       const isBlock = msg.action === 'block'
       const isWarn = msg.action === 'warn'
-      
-      addLiveLog(`[WebSocket Input] Session ${msg.session_id.slice(0, 8)}: ${msg.action.toUpperCase()} (Trust: ${msg.trust_score})`, isBlock ? 'error' : isWarn ? 'warning' : 'success')
+      const synthetic = msg.source === 'demo' || (msg.session_id || '').startsWith('demo_')
+
+      addLiveLog(`Session ${msg.session_id.slice(0, 8)}: ${msg.action.toUpperCase()} (Trust: ${msg.trust_score})`, isBlock ? 'error' : isWarn ? 'warning' : 'success', synthetic ? 'demo' : 'live')
       triggerRealTimeFlow(msg)
     } else if (msg.type === 'leak_event') {
-      addLiveLog(`[WebSocket Output] Session ${msg.session_id?.slice(0, 8) || 'unknown'} detected leak: Redacted`, 'warning')
+      const synthetic = msg.source === 'demo' || (msg.session_id || '').startsWith('demo_')
+      addLiveLog(`Session ${msg.session_id?.slice(0, 8) || 'unknown'} detected leak: Redacted`, 'warning', synthetic ? 'demo' : 'live')
       triggerRealTimeLeakFlow(msg)
     }
   })
@@ -69,7 +76,8 @@ export default function Pipeline() {
   const triggerRealTimeFlow = async (event) => {
     setSimulationState('websocket')
     setAnimatingEvent(event)
-    
+
+    const eventSource = event.source === 'demo' || (event.session_id || '').startsWith('demo_') ? 'demo' : 'live'
     const isBlock = event.action === 'block'
     const isWarn = event.action === 'warn'
     
@@ -111,7 +119,7 @@ export default function Pipeline() {
       })
       
       if (i === blockStep && isBlock) {
-        addLiveLog(`[Real-time Guard Block] Request rejected by ${NODES[blockStep].name} due to security constraints.`, 'error')
+        addLiveLog(`Request rejected by ${NODES[blockStep].name} due to security constraints.`, 'error', eventSource)
         break
       }
     }
@@ -124,7 +132,8 @@ export default function Pipeline() {
   const triggerRealTimeLeakFlow = async (event) => {
     setSimulationState('websocket')
     setAnimatingEvent(event)
-    
+
+    const eventSource = event.source === 'demo' || (event.session_id || '').startsWith('demo_') ? 'demo' : 'live'
     const steps = 8
     setNodeStatuses(Array(8).fill('idle'))
     
@@ -150,7 +159,7 @@ export default function Pipeline() {
       })
       
       if (i === 6) {
-        addLiveLog(`[Real-time Guard Redact] Sensitive contents scrubbed successfully at Output Guard.`, 'warning')
+        addLiveLog(`Sensitive contents scrubbed successfully at Output Guard.`, 'warning', eventSource)
         break
       }
     }
@@ -172,7 +181,7 @@ export default function Pipeline() {
     }
     
     setNodeStatuses(Array(8).fill('idle'))
-    addLiveLog(`[Simulation Started] Running scenario: ${type.toUpperCase()}`, 'info')
+    addLiveLog(`Running scenario: ${type.toUpperCase()}`, 'info', 'sim')
 
     for (let i = 0; i < steps; i++) {
       setActiveStep(i)
@@ -200,17 +209,17 @@ export default function Pipeline() {
       })
       
       if (type === 'attack' && i === 3) {
-        addLiveLog(`[Shield Action] Request blocked at LLM Guard (Adversarial pattern detected).`, 'error')
+        addLiveLog(`Request blocked at LLM Guard (Adversarial pattern detected).`, 'error', 'sim')
         break
       }
       if (type === 'leak' && i === 6) {
-        addLiveLog(`[Shield Action] Outgoing response redacted at Output Guard (AWS access key intercepted).`, 'warning')
+        addLiveLog(`Outgoing response redacted at Output Guard (AWS access key intercepted).`, 'warning', 'sim')
         break
       }
     }
-    
+
     if (type === 'clean') {
-      addLiveLog(`[Shield Action] Request allowed. Clean response safely delivered.`, 'success')
+      addLiveLog(`Request allowed. Clean response safely delivered.`, 'success', 'sim')
     }
     
     setSimulationState('idle')
@@ -444,10 +453,25 @@ export default function Pipeline() {
                   if (log.type === 'error') color = '#ff453a'
                   else if (log.type === 'warning') color = '#ff9f0a'
                   else if (log.type === 'success') color = '#30d158'
-                  
+
+                  const sourceTag = {
+                    live: { label: 'LIVE', color: '#4da3ff', bg: 'rgba(77,163,255,0.14)', border: 'rgba(77,163,255,0.3)' },
+                    demo: { label: 'SYNTHETIC', color: '#c9a3ff', bg: 'rgba(191,143,255,0.14)', border: 'rgba(191,143,255,0.3)' },
+                    sim: { label: 'MANUAL SIM', color: '#ff9f0a', bg: 'rgba(255,159,10,0.12)', border: 'rgba(255,159,10,0.28)' },
+                  }[log.source]
+
                   return (
                     <div key={log.id} style={{ color }} className="leading-5">
                       <span className="text-[#6e6e73] mr-2">[{log.timestamp}]</span>
+                      {sourceTag && (
+                        <span style={{
+                          fontSize: 8.5, fontWeight: 800, letterSpacing: '0.05em', color: sourceTag.color,
+                          background: sourceTag.bg, border: `1px solid ${sourceTag.border}`,
+                          borderRadius: 4, padding: '1.5px 5px', marginRight: 6,
+                        }}>
+                          {sourceTag.label}
+                        </span>
+                      )}
                       <span>{log.text}</span>
                     </div>
                   )

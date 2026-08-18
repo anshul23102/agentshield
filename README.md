@@ -134,6 +134,28 @@ Backend: http://localhost:8000
 Backend docs: http://localhost:8000/docs
 ```
 
+`start.sh` bootstraps a local API key and admin key automatically on first
+run - nothing to configure by hand for a fresh clone.
+
+## Authentication
+
+Every inspect/scan/analytics endpoint requires an API key. On first startup
+with no keys in the database, the backend mints one, prints it once to the
+console, and saves it to `backend/data/.bootstrap_api_key` (gitignored).
+`start.sh` reads that file and wires it into the frontend automatically.
+
+To issue additional keys:
+
+```bash
+cd backend
+python scripts/create_api_key.py "a label for this key"
+```
+
+Revoking a key, and other admin operations (toggling demo traffic, clearing
+the LLM cache, wiping sessions) require a separate admin key, which is
+likewise auto-generated on first run if `AGENTSHIELD_ADMIN_KEY` isn't set, and
+saved to `backend/data/.admin_key`.
+
 ## Backend Setup
 
 ```bash
@@ -150,6 +172,8 @@ Optional environment variables:
 GITHUB_TOKEN=your_token
 GROQ_API_KEY=your_token
 OPENROUTER_API_KEY=your_token
+AGENTSHIELD_ADMIN_KEY=your_own_admin_key      # auto-generated if unset
+REDIS_URL=redis://localhost:6379              # enables distributed rate limiting; falls back to in-memory if unset
 ```
 
 AgentShield still works without provider tokens by using the local pattern database.
@@ -162,7 +186,13 @@ npm install
 npm run dev
 ```
 
-For deployed frontend builds, set:
+Required for the frontend to authenticate against the backend:
+
+```text
+VITE_API_KEY=ash_live_...     # from backend/data/.bootstrap_api_key, or scripts/create_api_key.py
+```
+
+For deployed frontend builds, also set:
 
 ```text
 VITE_API_URL=https://agentshield-api-658e.onrender.com
@@ -171,15 +201,16 @@ VITE_API_URL=https://agentshield-api-658e.onrender.com
 ## API Highlights
 
 ```text
-GET  /api/status
-GET  /api/analytics
-GET  /api/events/recent
-POST /api/inspect
-POST /api/inspect/batch
-POST /api/scan/output
-GET  /api/patterns
-GET  /api/output/patterns
-WS   /ws/live
+GET  /api/status                 (no auth)
+GET  /api/patterns                (no auth)
+GET  /api/output/patterns         (no auth)
+GET  /api/analytics               requires X-API-Key
+GET  /api/events/recent           requires X-API-Key
+POST /api/inspect                 requires X-API-Key
+POST /api/inspect/batch           requires X-API-Key
+POST /api/scan/output             requires X-API-Key
+POST /api/ws-ticket                requires X-API-Key, mints a short-lived WS ticket
+WS   /ws/live?ticket=...           requires a valid ticket from /api/ws-ticket
 ```
 
 ## SDK Example
@@ -187,7 +218,8 @@ WS   /ws/live
 ```python
 from agentshield_sdk import AgentShield
 
-shield = AgentShield()
+# Requires an API key: python backend/scripts/create_api_key.py "label"
+shield = AgentShield(api_key="ash_live_...")
 
 result = shield.inspect(user_input)
 if result.is_safe:
