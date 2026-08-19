@@ -89,6 +89,16 @@ async def test_admin_routes_accept_the_real_admin_key(client, admin_headers):
     await client.post("/api/admin/toggle-generator", headers=admin_headers)
 
 
+async def test_admin_config_get_also_requires_admin_key(client, admin_headers):
+    # Regression guard: this GET route previously had no auth check at all
+    # while every other admin route did.
+    resp = await client.get("/api/admin/config")
+    assert resp.status_code == 403
+    resp = await client.get("/api/admin/config", headers=admin_headers)
+    assert resp.status_code == 200
+    assert "llm_cache_size" in resp.json()
+
+
 async def test_demo_attacks_and_leaks_are_served(client):
     attacks = await client.get("/api/demo/attacks")
     leaks = await client.get("/api/demo/leaks")

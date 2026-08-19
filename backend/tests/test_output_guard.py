@@ -54,3 +54,91 @@ def test_overlapping_matches_do_not_corrupt_output():
     result = guard.scan(text)
     assert result.redacted_text.count("[AWS_ACCESS_KEY_REDACTED]") == 2
     assert "AKIA" not in result.redacted_text
+
+
+def test_valid_iban_is_flagged():
+    guard = OutputGuard()
+    # Well-known valid German test IBAN (MOD-97 checksum passes).
+    result = guard.scan("Wire to: DE89370400440532013000")
+    assert any(m.pattern_id == "FIN-IBAN" for m in result.leaks_found)
+
+
+def test_iban_shaped_string_that_fails_checksum_is_not_flagged():
+    guard = OutputGuard()
+    # Right shape (2 letters, 2 digits, alphanumerics) but not a real IBAN -
+    # this is exactly the false-positive class (hashes, license keys) the
+    # bare regex used to redact needlessly.
+    result = guard.scan("License key: AB12CDEF3456789012345678")
+    assert not any(m.pattern_id == "FIN-IBAN" for m in result.leaks_found)
+
+
+def test_iban_with_wrong_length_for_its_country_is_rejected():
+    guard = OutputGuard()
+    # DE IBANs are always 22 chars; this is shaped right but truncated.
+    result = guard.scan("Account: DE8937040044053201300")
+    assert not any(m.pattern_id == "FIN-IBAN" for m in result.leaks_found)
+
+
+def test_real_phone_number_is_flagged():
+    guard = OutputGuard()
+    result = guard.scan("Call the customer at (212) 555-0147.")
+    assert any(m.pattern_id == "PII-PHONE" for m in result.leaks_found)
+
+
+def test_classic_fake_555_number_is_not_flagged():
+    guard = OutputGuard()
+    # The universal "not a real phone number" placeholder used in fiction,
+    # docs, and examples - the old regex-only check redacted this as if it
+    # were real PII.
+    result = guard.scan("Example: call 555-123-4567 for support.")
+    assert not any(m.pattern_id == "PII-PHONE" for m in result.leaks_found)
+
+
+def test_obviously_fake_sequential_number_is_not_flagged():
+    guard = OutputGuard()
+    result = guard.scan("Placeholder: 123-456-7890")
+    assert not any(m.pattern_id == "PII-PHONE" for m in result.leaks_found)
+
+
+def test_international_phone_number_is_flagged():
+    guard = OutputGuard()
+    result = guard.scan("Reach us at +44 20 7946 0958 during business hours.")
+    assert any(m.pattern_id == "PII-PHONE" for m in result.leaks_found)
+
+
+def test_real_looking_credential_is_still_flagged():
+    guard = OutputGuard()
+    result = guard.scan('config: password: "hunter2Secure!"')
+    assert any(m.pattern_id == "SEC-GENERIC-PWD" for m in result.leaks_found)
+
+
+def test_placeholder_credential_value_is_not_flagged():
+    guard = OutputGuard()
+    result = guard.scan('Set this in your .env: api_key: "your_api_key_here"')
+    assert not any(m.pattern_id == "SEC-GENERIC-PWD" for m in result.leaks_found)
+
+
+def test_low_diversity_dummy_credential_is_not_flagged():
+    guard = OutputGuard()
+    result = guard.scan('token: "aaaaaaaaaa"')
+    assert not any(m.pattern_id == "SEC-GENERIC-PWD" for m in result.leaks_found)
+
+
+def test_weak_but_real_looking_credential_is_still_flagged():
+    # A weak real password is still a real password - this only screens out
+    # values that could never plausibly be anyone's actual secret.
+    guard = OutputGuard()
+    result = guard.scan('password: "qwerty12"')
+    assert any(m.pattern_id == "SEC-GENERIC-PWD" for m in result.leaks_found)
+
+
+def test_role_based_email_is_not_flagged():
+    guard = OutputGuard()
+    result = guard.scan("For help, contact support@acme.com.")
+    assert not any(m.pattern_id == "PII-EMAIL" for m in result.leaks_found)
+
+
+def test_personal_looking_email_is_still_flagged():
+    guard = OutputGuard()
+    result = guard.scan("The customer's email on file is jane.doe@example.com.")
+    assert any(m.pattern_id == "PII-EMAIL" for m in result.leaks_found)

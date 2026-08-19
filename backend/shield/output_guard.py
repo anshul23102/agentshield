@@ -12,6 +12,8 @@ from enum import Enum
 from dataclasses import dataclass
 from typing import Optional
 
+import phonenumbers
+
 
 class LeakSeverity(str, Enum):
     CRITICAL = "critical"
@@ -167,6 +169,11 @@ LEAK_PATTERNS: list[LeakPattern] = [
         redact_with="[EMAIL_REDACTED]",
     ),
     LeakPattern(
+        # The regex below is retained only for /api/output/patterns listings
+        # and stats - scan() never runs it. Actual detection is a dedicated
+        # phonenumbers.PhoneNumberMatcher pass (see scan()), since a NANP-
+        # shaped regex both misses valid international numbers and accepts
+        # obviously-fake ones like 555-123-4567.
         id="PII-PHONE",
         pattern=r"(?:\+\d{1,3}[\s-]?)?(?:\(\d{3}\)|\b\d{3})[\s.-]\d{3}[\s.-]\d{4}\b",
         leak_type=LeakType.PII, severity=LeakSeverity.MEDIUM,
@@ -263,6 +270,108 @@ def _luhn_valid(number: str) -> bool:
     return checksum % 10 == 0
 
 
+_IBAN_LENGTH_BY_COUNTRY = {
+    # ISO 13616 registered lengths. A bare "2 letters + 2 digits + up to 30
+    # alphanumerics" regex (the old behavior) matches an enormous space of
+    # unrelated strings - hex hashes, product codes, license keys - so length
+    # is checked per-country before the checksum even runs.
+    "AD": 24, "AE": 23, "AL": 28, "AT": 20, "AZ": 28, "BA": 20, "BE": 16,
+    "BG": 22, "BH": 22, "BR": 29, "BY": 28, "CH": 21, "CR": 22, "CY": 28,
+    "CZ": 24, "DE": 22, "DK": 18, "DO": 28, "EE": 20, "EG": 29, "ES": 24,
+    "FI": 18, "FO": 18, "FR": 27, "GB": 22, "GE": 22, "GI": 23, "GL": 18,
+    "GR": 27, "GT": 28, "HR": 21, "HU": 28, "IE": 22, "IL": 23, "IQ": 23,
+    "IS": 26, "IT": 27, "JO": 30, "KW": 30, "KZ": 20, "LB": 28, "LC": 32,
+    "LI": 21, "LT": 20, "LU": 20, "LV": 21, "LY": 25, "MC": 27, "MD": 24,
+    "ME": 22, "MK": 19, "MR": 27, "MT": 31, "MU": 30, "NL": 18, "NO": 15,
+    "PK": 24, "PL": 28, "PS": 29, "PT": 25, "QA": 29, "RO": 24, "RS": 22,
+    "SA": 24, "SC": 31, "SE": 24, "SI": 19, "SK": 24, "SM": 27, "ST": 25,
+    "SV": 28, "TL": 23, "TN": 24, "TR": 26, "UA": 29, "VA": 22, "VG": 24,
+    "XK": 20,
+}
+
+
+def _iban_valid(candidate: str) -> bool:
+    """ISO 7064 MOD 97-10 checksum, the actual algorithm IBANs use - mirrors
+    the Luhn/Verhoeff treatment already given to credit cards and Aadhaar.
+    Without this, the bare regex matches any 2-letters+2-digits+alphanumerics
+    string, which is a huge false-positive surface (hashes, license keys...).
+    """
+    iban = re.sub(r"\s", "", candidate).upper()
+    if not re.fullmatch(r"[A-Z]{2}[0-9]{2}[A-Z0-9]{9,30}", iban):
+        return False
+    country = iban[:2]
+    expected_length = _IBAN_LENGTH_BY_COUNTRY.get(country)
+    if expected_length is not None and len(iban) != expected_length:
+        return False
+    rearranged = iban[4:] + iban[:4]
+    numeric = "".join(str(int(ch, 36)) for ch in rearranged)  # A=10 ... Z=35
+    return int(numeric) % 97 == 1
+
+
+class _Span:
+    """Minimal re.Match-compatible shim so a phonenumbers match can flow
+    through the same position-sorting/overlap-rejection code as every
+    regex-derived match, without scan() needing to know the difference."""
+
+    def __init__(self, start: int, end: int):
+        self._start, self._end = start, end
+
+    def start(self) -> int:
+        return self._start
+
+    def end(self) -> int:
+        return self._end
+
+
+# Values that show up constantly in docs, examples, and boilerplate but are
+# never anyone's real credential. A bare "key: quoted-string" regex has no
+# way to tell these apart from an actual secret, so SEC-GENERIC-PWD redacted
+# all of them - defeating the point of an AI agent being *able* to explain
+# its own config format in a response.
+_PLACEHOLDER_CREDENTIAL_VALUES = {
+    "example", "changeme", "change_me", "change-me", "yourpassword",
+    "your_password", "your-password", "yourapikey", "your_api_key",
+    "your-api-key", "your_api_key_here", "yourtoken", "your_token",
+    "password", "secret", "test", "test123", "testing", "dummy", "sample",
+    "placeholder", "string", "value", "letmein", "foobar", "foo", "bar",
+    "todo", "fixme", "null", "none", "undefined", "changethis", "xxxxxx",
+}
+
+
+def _looks_like_a_real_credential(quoted_value: str) -> bool:
+    """Filters SEC-GENERIC-PWD matches down to values that could plausibly be
+    a real secret: not a well-known placeholder, and not a low-diversity
+    dummy string like 'aaaaaa' or '111111'. Deliberately does not try to
+    score entropy on genuinely weak-but-real secrets ('hunter2') - a weak
+    real password is still a real password and should still get redacted;
+    this only screens out values that are obviously never anyone's secret.
+    """
+    value = quoted_value.lower()
+    if value in _PLACEHOLDER_CREDENTIAL_VALUES:
+        return False
+    if len(set(value)) < 4:  # e.g. 'aaaaaa', '111111', 'xxxxxxxx'
+        return False
+    return True
+
+
+# Role-based/generic addresses that show up in signatures, docs, and support
+# templates constantly and identify a function, not a person. Many DLP/PII
+# products (Microsoft Purview, Nightfall, etc.) exclude exactly this class by
+# default for the same reason: redacting "support@company.com" protects no
+# one's privacy, it just mangles ordinary business correspondence.
+_ROLE_BASED_EMAIL_LOCAL_PARTS = {
+    "noreply", "no-reply", "donotreply", "do-not-reply", "support", "info",
+    "contact", "help", "sales", "admin", "administrator", "hello", "team",
+    "press", "security", "abuse", "postmaster", "webmaster", "billing",
+    "careers", "jobs", "feedback", "help-desk", "helpdesk", "service",
+}
+
+
+def _is_role_based_email(matched_email: str) -> bool:
+    local_part = matched_email.split("@", 1)[0].lower()
+    return local_part in _ROLE_BASED_EMAIL_LOCAL_PARTS
+
+
 @dataclass
 class LeakMatch:
     pattern_id: str
@@ -323,6 +432,9 @@ class OutputGuard:
         # Collect all matches with validation filters
         all_matches = []
         for lp, compiled in COMPILED_LEAK_PATTERNS:
+            if lp.id == "PII-PHONE":
+                continue  # handled below by a dedicated libphonenumber pass instead of regex
+
             for m in compiled.finditer(text):
                 matched = m.group(0)
 
@@ -335,7 +447,30 @@ class OutputGuard:
                 if lp.id == "PII-AADHAAR" and not _verhoeff_valid(matched):
                     continue
 
+                # MOD-97 checksum validation for IBANs
+                if lp.id == "FIN-IBAN" and not _iban_valid(matched):
+                    continue
+
+                # Placeholder/low-diversity value screen for generic credential assignments
+                if lp.id == "SEC-GENERIC-PWD":
+                    value_match = re.search(r"""['"]([^'"\s]{6,})['"]""", matched)
+                    if value_match and not _looks_like_a_real_credential(value_match.group(1)):
+                        continue
+
+                # Role-based address screen ("support@...", "noreply@...")
+                if lp.id == "PII-EMAIL" and _is_role_based_email(matched):
+                    continue
+
                 all_matches.append((lp, m, matched))
+
+        # Phone numbers: a regex can only guess at digit-grouping shape, which
+        # is NANP-centric and both misses valid international formats and
+        # accepts obviously-fake numbers like 555-123-4567. PhoneNumberMatcher
+        # finds AND validates numbers against real numbering-plan metadata in
+        # one pass, so there's no separate regex-shape gate to keep in sync.
+        phone_pattern = next(lp for lp in LEAK_PATTERNS if lp.id == "PII-PHONE")
+        for pm in phonenumbers.PhoneNumberMatcher(text, "US"):
+            all_matches.append((phone_pattern, _Span(pm.start, pm.end), pm.raw_string))
 
         # Sort by position for deterministic redaction
         all_matches.sort(key=lambda x: x[1].start())

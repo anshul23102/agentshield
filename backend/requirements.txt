@@ -14,3 +14,9 @@ en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_
 
 # Distributed rate limiting (Redis-backed when REDIS_URL is set, in-memory fallback otherwise)
 limits[redis]==5.8.0
+
+# Homoglyph/confusable Unicode detection for Layer 1 evasion resistance
+confusable-homoglyphs==3.3.1
+
+# Real phone-number validation (Google's libphonenumber) for the Output Guard
+phonenumbers==9.0.37

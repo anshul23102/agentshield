@@ -10,6 +10,8 @@ import unicodedata
 from typing import Optional
 from dataclasses import dataclass, field
 
+from confusable_homoglyphs import confusables
+
 from .patterns import (
     COMPILED_PATTERNS, ThreatLevel, ThreatCategory, AttackPattern
 )
@@ -116,14 +118,6 @@ SUSPICIOUS_KEYWORDS = {
     ],
 }
 
-# Characters that suggest unicode obfuscation (lookalike chars)
-LOOKALIKE_RANGES = [
-    (0x0430, 0x044F),  # Cyrillic
-    (0xFF21, 0xFF3A),  # Full-width Latin
-    (0x1D400, 0x1D7FF),  # Mathematical alphanumeric
-]
-
-
 def normalize_text(text: str) -> str:
     """Normalize unicode, collapse whitespace, lowercase for pattern matching."""
     text = unicodedata.normalize("NFKC", text)
@@ -132,13 +126,70 @@ def normalize_text(text: str) -> str:
 
 
 def detect_lookalike_chars(text: str) -> bool:
-    """Detect unicode lookalike characters used for obfuscation."""
-    for char in text:
-        cp = ord(char)
-        for start, end in LOOKALIKE_RANGES:
-            if start <= cp <= end:
-                return True
-    return False
+    """True if the text mixes scripts in a way that could be spoofing ASCII -
+    e.g. a Cyrillic 'а' standing in for a Latin 'a'. Uses the Unicode
+    confusables table (the same data django-registration and browsers'
+    IDN-spoof checks use) rather than three hardcoded codepoint ranges, which
+    only ever covered Cyrillic, fullwidth Latin, and math alphanumeric and
+    missed Greek, Armenian, Cherokee, and dozens of other confusable blocks.
+    NFKC in normalize_text() already collapses fullwidth/math-alphanumeric
+    (those are compatibility decompositions); this covers the much larger set
+    NFKC structurally cannot, since those are genuinely different characters
+    that merely render identically.
+    """
+    return bool(confusables.is_dangerous(text))
+
+
+def normalize_confusables(text: str) -> str:
+    """Maps cross-script confusable characters back to their ASCII look-alike
+    (Cyrillic а -> a, Greek ο -> o, Armenian ա -> w, ...) before pattern
+    matching runs, so a homoglyph-obfuscated attack string still gets caught
+    instead of just flagged after the fact.
+    """
+    findings = confusables.is_confusable(text, preferred_aliases=["latin", "common"], greedy=True)
+    if not findings:
+        return text
+    replacements = {}
+    for f in findings:
+        ch = f["character"]
+        if ord(ch) < 128:
+            continue
+        for h in f["homoglyphs"]:
+            candidate = h["c"]
+            if len(candidate) == 1 and ord(candidate) < 128:
+                replacements[ch] = candidate
+                break
+    if not replacements:
+        return text
+    return "".join(replacements.get(c, c) for c in text)
+
+
+_COLLAPSE_SEPARATORS_RE = re.compile(r"(?<=[A-Za-z0-9])[\s.\-_*]{1,2}(?=[A-Za-z0-9])")
+
+
+def collapse_spacing_evasion(text: str) -> str:
+    """Strips single separator characters wedged between letters/digits, e.g.
+    'i.g.n.o.r.e' or 'i g n o r e' or 'i-g-n-o-r-e' -> 'ignore'. Deliberately
+    aggressive: it also collapses ordinary prose ('New York' -> 'NewYork'),
+    but the output is only ever used for a substring check against a short,
+    specific attack-signature list below, never shown to a user or matched
+    against the full regex pattern set - so over-collapsing normal text is
+    harmless, it just can't accidentally spell out one of those signatures.
+    """
+    return _COLLAPSE_SEPARATORS_RE.sub("", text)
+
+
+# Attack-intent phrases worth catching even when spelled with inserted
+# separators or padding whitespace, since Layer 1's regexes match on
+# contiguous text and a trivial "i.g.n.o.r.e" rewrite defeats them outright.
+OBFUSCATION_SIGNATURES = [
+    "ignoreallpreviousinstructions", "ignoretheabovepreviousinstructions",
+    "disableallfilters", "disablesafetyfilters", "disablecontentfilters",
+    "bypassallsafety", "bypasssafetyfilters", "bypasssafetymeasures",
+    "danmode", "developermode", "jailbreakmode", "uncensoredmode",
+    "revealsystemprompt", "revealyoursysteminstructions", "printsystemprompt",
+    "unrestrictedmode", "havenorestrictions", "nolongerrestricted",
+]
 
 
 class ThreatDetector:
@@ -160,16 +211,28 @@ class ThreatDetector:
         llm_result: Optional[LLMAnalysisResult] = None
 
         # ── Pre-processing ────────────────────────────────────────────────────
-        normalized = normalize_text(text)
+        # Undo cross-script homoglyph substitution before matching, not just
+        # flag it - otherwise a Cyrillic 'а' standing in for 'a' silently
+        # defeats every Layer 1 pattern built around the Latin spelling.
+        deconfused = normalize_confusables(text)
+        normalized = normalize_text(deconfused)
         lower = normalized.lower()
 
-        # Unicode obfuscation check
+        # Unicode obfuscation check (flagged even though we already corrected
+        # for it above - a legitimate input has no reason to mix scripts)
         if detect_lookalike_chars(text):
             behavioral_flags.append("unicode_lookalike_chars_detected")
 
         # Unusually long input check (potential token-stuffing)
         if len(text) > 2000:
             behavioral_flags.append("unusually_long_input")
+
+        # Punctuation/spacing evasion check ("i.g.n.o.r.e" -> "ignore"):
+        # collapse separators and look for a known attack-intent phrase that
+        # would otherwise slip past every space/period-anchored regex above.
+        collapsed = collapse_spacing_evasion(lower)
+        if any(sig in collapsed for sig in OBFUSCATION_SIGNATURES):
+            behavioral_flags.append("obfuscated_attack_signature_detected")
 
         # ── Layer 1: Pattern Matching ─────────────────────────────────────────
         layers_executed.append("pattern_matching")

@@ -26,6 +26,10 @@ BEHAVIORAL_DEDUCTIONS = {
     "unicode_lookalike_chars_detected": 15,
     "unusually_long_input": 5,
     "high_message_rate_detected": 10,
+    # A curated, specific attack phrase survived punctuation/spacing removal -
+    # this is a precise signal (near-zero false-positive rate by construction,
+    # see OBFUSCATION_SIGNATURES), so it's weighted close to a HIGH pattern hit.
+    "obfuscated_attack_signature_detected": 45,
 }
 
 LLM_SEVERITY_DEDUCTIONS = {
