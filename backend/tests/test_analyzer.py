@@ -28,9 +28,14 @@ async def test_provider_selection_prefers_github_models(monkeypatch):
 
 
 async def test_no_keys_configured_falls_back_to_pattern_only(monkeypatch):
-    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
-    monkeypatch.delenv("GROQ_API_KEY", raising=False)
-    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    # setenv("", ...) not delenv(): LLMAnalyzer.__init__() calls load_dotenv()
+    # on construction, which only skips keys already PRESENT in os.environ -
+    # a deleted key with a real value sitting in a developer's local
+    # backend/.env would get silently reloaded right back. An empty string
+    # still blocks the reload while reading as falsy to the app's own checks.
+    monkeypatch.setenv("GITHUB_TOKEN", "")
+    monkeypatch.setenv("GROQ_API_KEY", "")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "")
     analyzer = LLMAnalyzer()
     assert analyzer.provider == "pattern_only"
     assert analyzer.is_llm_available is False

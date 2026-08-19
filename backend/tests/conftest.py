@@ -12,9 +12,16 @@ os.environ["AGENTSHIELD_DB_PATH"] = str(Path(_TMP_DIR) / "test.db")
 os.environ["AGENTSHIELD_SEED_DATA"] = "false"        # deterministic: start from an empty DB
 os.environ["AGENTSHIELD_DEMO_TRAFFIC"] = "false"      # no background synthetic events during tests
 os.environ["AGENTSHIELD_RATE_LIMIT_PER_MINUTE"] = "100000"  # don't let the limiter fail a busy test run
-os.environ.pop("GITHUB_TOKEN", None)                  # force pattern-only mode: deterministic, no network
-os.environ.pop("GROQ_API_KEY", None)
-os.environ.pop("OPENROUTER_API_KEY", None)
+for _provider_key in ("GITHUB_TOKEN", "GROQ_API_KEY", "OPENROUTER_API_KEY"):
+    # Set to "" rather than popping: LLMAnalyzer.__init__() calls
+    # load_dotenv() on every construction, which only skips keys already
+    # PRESENT in os.environ - a popped key with a real value sitting in a
+    # developer's local backend/.env gets silently reloaded right back,
+    # quietly turning "pattern-only, no network" tests into ones that make
+    # real LLM API calls. An empty string still counts as "present" to
+    # load_dotenv (blocking the reload) while still reading as falsy to
+    # every `if x_key:` check in the app.
+    os.environ[_provider_key] = ""
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 

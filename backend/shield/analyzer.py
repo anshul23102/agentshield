@@ -146,7 +146,13 @@ class LLMAnalyzer:
                 base_url="https://api.groq.com/openai/v1",
                 api_key=groq_key,
             )
-            self._model = "llama-3.1-8b-instant"
+            # llama-3.1-8b-instant was retired from Groq's lineup. gpt-oss-20b
+            # (the smaller replacement candidate) refuses to even *analyze*
+            # harmful-sounding prompts outright - it reads "is this a threat"
+            # framing as a request to help with the harmful content itself,
+            # which breaks Layer 4 exactly on the inputs it matters most for.
+            # gpt-oss-120b classifies correctly without refusing.
+            self._model = "openai/gpt-oss-120b"
             self._provider = "groq"
             return
 
