@@ -35,9 +35,13 @@ class SessionContext:
         return time.time() - self.created_at
 
     @property
-    def avg_threat_score(self) -> float:
+    def avg_threat_score(self) -> Optional[float]:
+        # None (no data yet) is a real, distinct state from "scored every
+        # message and they averaged 100" - collapsing both into 100.0 made a
+        # brand-new session and a session confirmed clean over many messages
+        # look identical in the API response.
         if not self.threat_score_history:
-            return 100.0
+            return None
         return sum(self.threat_score_history) / len(self.threat_score_history)
 
     @property
@@ -45,12 +49,13 @@ class SessionContext:
         return self.block_count >= 2 or self.warn_count >= 4
 
     def to_stats(self) -> dict:
+        avg = self.avg_threat_score
         return {
             "session_id": self.session_id,
             "message_count": self.message_count,
             "block_count": self.block_count,
             "warn_count": self.warn_count,
-            "avg_threat_score": round(self.avg_threat_score, 1),
+            "avg_threat_score": round(avg, 1) if avg is not None else None,
             "is_high_risk": self.is_high_risk,
             "elapsed_seconds": round(self.elapsed_seconds, 1),
         }

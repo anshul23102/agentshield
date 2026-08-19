@@ -6,6 +6,7 @@ FastAPI backend with WebSocket support for live dashboard updates.
 import asyncio
 import json
 import os
+import random
 import secrets
 import time
 import uuid
@@ -173,10 +174,6 @@ def _scoped_session_id(key: ApiKeyRecord, session_id: str) -> str:
 
 
 async def demo_threat_generator():
-    import random
-    import uuid
-    import time
-    
     # Wait for app startup
     await asyncio.sleep(5)
     
