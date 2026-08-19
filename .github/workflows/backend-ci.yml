@@ -33,3 +33,36 @@ jobs:
 
       - name: Run tests with coverage
         run: python -m pytest --cov=shield --cov=database --cov-report=term-missing --cov-fail-under=70
+
+  lockfile-freshness:
+    name: requirements.lock is up to date
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11.11"
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Regenerate the lockfile and diff against the committed one
+        run: |
+          # -o's filename is embedded verbatim in the generated header comment,
+          # so the regenerated copy has to be produced with the same -o
+          # argument (requirements.lock) in a separate directory, not just
+          # written to a differently-named temp file, or every run would
+          # show a spurious one-line diff regardless of real drift.
+          mkdir -p /tmp/lockcheck
+          cp requirements.txt /tmp/lockcheck/
+          (cd /tmp/lockcheck && uv pip compile requirements.txt -o requirements.lock --python-version 3.11)
+          if ! diff -q requirements.lock /tmp/lockcheck/requirements.lock > /dev/null; then
+            echo "requirements.lock is stale. Regenerate it with:"
+            echo "  uv pip compile requirements.txt -o requirements.lock --python-version 3.11"
+            diff requirements.lock /tmp/lockcheck/requirements.lock || true
+            exit 1
+          fi

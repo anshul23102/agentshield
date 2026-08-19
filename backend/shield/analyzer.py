@@ -9,11 +9,14 @@ import json
 import asyncio
 import hashlib
 from typing import Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
 
 from .patterns import ThreatCategory, ThreatLevel
+from . import shared_state
+
+LLM_CACHE_KEY_PREFIX = "agentshield:llmcache:"
 
 
 @dataclass
@@ -26,6 +29,66 @@ class LLMAnalysisResult:
     recommended_action: str    # block / warn / allow
     attack_vector: str
     mitigation: str
+
+
+class InMemoryLLMCache:
+    """Single-process cache. Fast, but each worker recomputes anything cached
+    by another worker - see shield/shared_state.py."""
+
+    def __init__(self, limit: int):
+        self._store: dict[str, LLMAnalysisResult] = {}
+        self._limit = limit
+
+    async def get(self, key: str) -> Optional[LLMAnalysisResult]:
+        return self._store.get(key)
+
+    async def set(self, key: str, value: LLMAnalysisResult):
+        if self._limit == 0:
+            return
+        if self._limit > 0 and len(self._store) >= self._limit:
+            oldest_key = next(iter(self._store))
+            self._store.pop(oldest_key, None)
+        self._store[key] = value
+
+    async def clear(self):
+        self._store.clear()
+
+    async def size(self) -> int:
+        return len(self._store)
+
+
+class RedisLLMCache:
+    """Redis-backed cache shared across every worker process, with a TTL so
+    stale threat verdicts don't linger forever as attack patterns evolve."""
+
+    def __init__(self, ttl_seconds: int = 3600):
+        self._ttl = ttl_seconds
+
+    def _key(self, cache_key: str) -> str:
+        return f"{LLM_CACHE_KEY_PREFIX}{cache_key}"
+
+    async def get(self, key: str) -> Optional[LLMAnalysisResult]:
+        raw = await shared_state.get_redis().get(self._key(key))
+        return LLMAnalysisResult(**json.loads(raw)) if raw else None
+
+    async def set(self, key: str, value: LLMAnalysisResult):
+        await shared_state.get_redis().set(self._key(key), json.dumps(asdict(value)), ex=self._ttl)
+
+    async def clear(self):
+        client = shared_state.get_redis()
+        keys = [k async for k in client.scan_iter(match=f"{LLM_CACHE_KEY_PREFIX}*")]
+        if keys:
+            await client.delete(*keys)
+
+    async def size(self) -> int:
+        client = shared_state.get_redis()
+        return sum([1 async for _ in client.scan_iter(match=f"{LLM_CACHE_KEY_PREFIX}*")])
+
+
+def _create_llm_cache(limit: int):
+    if shared_state.redis_enabled():
+        return RedisLLMCache()
+    return InMemoryLLMCache(limit=limit)
 
 
 ANALYSIS_PROMPT = """You are AgentShield, an expert security system specializing in detecting adversarial attacks against autonomous agents.
@@ -56,11 +119,11 @@ Respond ONLY with a valid JSON object in exactly this format:
 class LLMAnalyzer:
     def __init__(self):
         load_dotenv()
-        self._cache: dict[str, LLMAnalysisResult] = {}
+        self._cache_limit = int(os.getenv("AGENTSHIELD_LLM_CACHE_LIMIT", "5000"))
+        self._cache = _create_llm_cache(self._cache_limit)
         self._client: Optional[AsyncOpenAI] = None
         self._model: Optional[str] = None
         self._provider: str = "none"
-        self._cache_limit = int(os.getenv("AGENTSHIELD_LLM_CACHE_LIMIT", "5000"))
         self._semaphore = asyncio.Semaphore(int(os.getenv("AGENTSHIELD_LLM_MAX_CONCURRENCY", "8")))
         self._initialize_client()
 
@@ -120,8 +183,9 @@ class LLMAnalyzer:
             return None
 
         cache_key = self._cache_key(text, context)
-        if cache_key in self._cache:
-            return self._cache[cache_key]
+        cached = await self._cache.get(cache_key)
+        if cached is not None:
+            return cached
 
         user_content = f"Input to analyze:\n\n{text}"
         if context:
@@ -162,13 +226,7 @@ class LLMAnalyzer:
                 mitigation=str(data.get("mitigation", "n/a")),
             )
 
-            # Evict oldest cache entry when the bounded cache is full.
-            if self._cache_limit > 0 and len(self._cache) >= self._cache_limit:
-                oldest_key = next(iter(self._cache))
-                self._cache.pop(oldest_key, None)
-
-            if self._cache_limit != 0:
-                self._cache[cache_key] = result
+            await self._cache.set(cache_key, result)
             return result
 
         except asyncio.TimeoutError:
@@ -178,5 +236,8 @@ class LLMAnalyzer:
         except Exception:
             return None
 
-    def clear_cache(self):
-        self._cache.clear()
+    async def clear_cache(self):
+        await self._cache.clear()
+
+    async def cache_size(self) -> int:
+        return await self._cache.size()

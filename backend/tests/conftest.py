@@ -24,14 +24,29 @@ from httpx import ASGITransport, AsyncClient
 
 from database.db import init_db
 from shield.auth import create_api_key
+from shield import ThreatDetector
+from shield.output_guard import OutputGuard
 import main as main_module
 
 
 @pytest_asyncio.fixture
 async def raw_client():
     """An unauthenticated HTTP client wired directly into the ASGI app, no
-    network hop. Use this to test the 401/403 paths themselves."""
+    network hop. Use this to test the 401/403 paths themselves.
+
+    Route handlers get ThreatDetector/OutputGuard via Depends(get_detector) /
+    Depends(get_output_guard), which read them off app.state - normally
+    populated by the app's lifespan(). httpx's ASGITransport doesn't run
+    lifespan events on its own (that needs a separate tool like
+    asgi-lifespan), and spinning up the full lifespan - including the
+    WebSocket broadcast worker, demo generator, and retention loop - for
+    every single test is unnecessary overhead for what's fast API-level
+    testing. Setting app.state directly here is the same seam a production
+    lifespan populates, just without the background tasks tests don't need.
+    """
     await init_db()
+    main_module.app.state.detector = ThreatDetector()
+    main_module.app.state.output_guard = OutputGuard()
     transport = ASGITransport(app=main_module.app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac

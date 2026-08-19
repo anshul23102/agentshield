@@ -17,7 +17,7 @@ from .patterns import (
 )
 from .analyzer import LLMAnalyzer, LLMAnalysisResult
 from .trust_scorer import TrustScorer
-from .session_manager import SessionManager, SessionContext
+from .session_manager import create_session_store, SessionContext
 
 
 @dataclass
@@ -196,7 +196,7 @@ class ThreatDetector:
     def __init__(self):
         self.analyzer = LLMAnalyzer()
         self.scorer = TrustScorer()
-        self.session_manager = SessionManager()
+        self.session_manager = create_session_store()
 
     async def inspect(
         self,
@@ -265,8 +265,12 @@ class ThreatDetector:
         session_context: Optional[SessionContext] = None
 
         if session_id:
-            session_context = self.session_manager.get_or_create(session_id)
-            self.session_manager.add_message(session_id, text)
+            # add_message() returns the post-update context, not a stale
+            # snapshot from before this message - matters for the Redis
+            # backend, where get_or_create()/add_message() don't share an
+            # in-memory object by reference the way the single-process store
+            # does.
+            session_context = await self.session_manager.add_message(session_id, text)
 
             # Multi-turn attack signals: strictly decreasing trust scores ending
             # in risky territory. Equal scores (e.g. a clean streak of 95s) must
@@ -301,7 +305,7 @@ class ThreatDetector:
             layers_executed.append("llm_deep_analysis")
             ctx_str = None
             if session_context and session_context.message_count > 1:
-                recent = self.session_manager.get_recent_messages(session_id, 3)
+                recent = await self.session_manager.get_recent_messages(session_id, 3)
                 ctx_str = "\n".join(recent[:-1])  # all but current
             llm_result = await self.analyzer.analyze(text, ctx_str)
 
@@ -316,7 +320,7 @@ class ThreatDetector:
 
         # Update session threat history
         if session_id:
-            self.session_manager.record_threat_score(session_id, trust_score)
+            await self.session_manager.record_threat_score(session_id, trust_score)
 
         # Determine action
         if trust_score <= 30:

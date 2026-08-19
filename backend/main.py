@@ -16,8 +16,8 @@ from typing import Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, BackgroundTasks, HTTPException, Request, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
+from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
@@ -25,8 +25,9 @@ from shield import ThreatDetector
 from shield.patterns import ATTACK_PATTERNS, ThreatCategory, ThreatLevel, CATEGORY_STATS, LEVEL_STATS
 from shield.output_guard import OutputGuard, LEAK_PATTERNS, LEAK_CATEGORY_STATS
 from shield.auth import require_api_key, ApiKeyRecord, create_api_key
+from shield import shared_state
 from database.db import (
-    log_event, get_recent_events, get_analytics, init_db,
+    log_event, get_recent_events, get_analytics, init_db, close_pool,
     purge_expired_events, EVENT_RETENTION_DAYS, EVENT_CLEANUP_INTERVAL_SECONDS,
     list_api_keys, revoke_api_key,
 )
@@ -35,8 +36,6 @@ from database.db import (
 
 load_dotenv()
 
-detector = ThreatDetector()
-output_guard = OutputGuard()
 ws_clients: dict[WebSocket, str] = {}  # websocket -> tenant_id (API key id)
 event_queue: asyncio.Queue = asyncio.Queue(maxsize=1000)
 
@@ -417,6 +416,13 @@ async def _ensure_bootstrap_api_key():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Detector/OutputGuard live on app.state, not as bare module globals -
+    # this is the actual dependency-injection seam: tests (or a future
+    # alternate implementation) can construct their own ThreatDetector and
+    # assign it directly to app.state.detector before making requests,
+    # instead of needing to monkeypatch module internals.
+    app.state.detector = ThreatDetector()
+    app.state.output_guard = OutputGuard()
     # Warm up DB
     await init_db()
     await _ensure_bootstrap_api_key()
@@ -426,10 +432,21 @@ async def lifespan(app: FastAPI):
     traffic_task = asyncio.create_task(demo_threat_generator())
     # Enforce event retention (was previously dead config - never called anywhere)
     retention_task = asyncio.create_task(retention_cleanup_worker())
+    # Cross-worker WebSocket fanout - only meaningful (and only started) when
+    # REDIS_URL is set; a single worker already delivers its own broadcasts
+    # locally without this.
+    relay_task = None
+    if shared_state.redis_enabled():
+        relay_task = asyncio.create_task(redis_relay_worker())
+        print("[startup] REDIS_URL set - session state, LLM cache, WS tickets, "
+              "and broadcast fanout are now shared across all worker processes.")
     yield
     task.cancel()
     traffic_task.cancel()
     retention_task.cancel()
+    if relay_task:
+        relay_task.cancel()
+    await close_pool()
 
 
 app = FastAPI(
@@ -438,6 +455,8 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
 app.add_middleware(
     CORSMiddleware,
@@ -454,6 +473,20 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
 
+# ── Dependency injection ──────────────────────────────────────────────────────
+# Route handlers take these via Depends() rather than reaching for a bare
+# module-level global, so a test (or a future alternate implementation) can
+# swap app.state.detector / app.state.output_guard without monkeypatching
+# main's module internals.
+
+def get_detector(request: Request) -> ThreatDetector:
+    return request.app.state.detector
+
+
+def get_output_guard(request: Request) -> OutputGuard:
+    return request.app.state.output_guard
+
+
 # ── WebSocket broadcast ───────────────────────────────────────────────────────
 # ws_clients maps each open connection to the tenant (API key id) it
 # authenticated as. broadcast() with a tenant_id only reaches that tenant's
@@ -461,6 +494,15 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 # caller's live feed of inspected prompts. tenant_id=None (used only for the
 # synthetic demo generator) is delivered to everyone, since that content is
 # fabricated filler, never real inspected traffic.
+#
+# event_queue only ever holds events destined for THIS worker's own local
+# clients. With multiple uvicorn workers behind a load balancer, a client
+# connected to worker B would never see an event broadcast because of a
+# request that landed on worker A - broadcast()/redis_relay_worker() below
+# close that gap when REDIS_URL is set, via pub/sub fanout to every worker.
+
+REDIS_EVENTS_CHANNEL = "agentshield:events"
+
 
 async def ws_broadcast_worker():
     while True:
@@ -483,10 +525,42 @@ async def ws_broadcast_worker():
 
 
 async def broadcast(event: dict, tenant_id: Optional[str] = None):
+    if shared_state.redis_enabled():
+        try:
+            await shared_state.get_redis().publish(
+                REDIS_EVENTS_CHANNEL, json.dumps({"event": event, "tenant_id": tenant_id})
+            )
+            return
+        except Exception:
+            pass  # Redis hiccup: fall through to local-only delivery rather than drop the event
     try:
         event_queue.put_nowait((event, tenant_id))
     except asyncio.QueueFull:
         pass
+
+
+async def redis_relay_worker():
+    """Every worker subscribes to the same Redis channel, so a broadcast()
+    call handled by ANY worker reaches every worker's own local WebSocket
+    clients, not just the ones attached to whichever worker took the
+    originating HTTP request. Only started when REDIS_URL is configured."""
+    client = shared_state.get_redis()
+    pubsub = client.pubsub()
+    await pubsub.subscribe(REDIS_EVENTS_CHANNEL)
+    try:
+        async for message in pubsub.listen():
+            if message.get("type") != "message":
+                continue
+            try:
+                payload = json.loads(message["data"])
+                event_queue.put_nowait((payload["event"], payload.get("tenant_id")))
+            except (asyncio.QueueFull, json.JSONDecodeError, KeyError):
+                continue
+    except asyncio.CancelledError:
+        pass
+    finally:
+        await pubsub.unsubscribe(REDIS_EVENTS_CHANNEL)
+        await pubsub.close()
 
 
 # ── Retention cleanup ─────────────────────────────────────────────────────────
@@ -515,21 +589,38 @@ async def retention_cleanup_worker():
 # single-use ticket, and only the disposable ticket goes in the WS URL.
 
 WS_TICKET_TTL_SECONDS = 60
-_ws_tickets: dict[str, tuple[str, float]] = {}  # ticket -> (tenant_id, expires_at)
+WS_TICKET_KEY_PREFIX = "agentshield:wsticket:"
+# In-memory fallback only; when REDIS_URL is set, tickets live in Redis so a
+# ticket minted on worker A is still redeemable when the WS handshake lands
+# on worker B (which a load balancer is free to do).
+_local_ws_tickets: dict[str, tuple[str, float]] = {}
 
 
-def _mint_ws_ticket(tenant_id: str) -> str:
-    now = time.time()
-    expired = [t for t, (_, exp) in _ws_tickets.items() if exp < now]
-    for t in expired:
-        _ws_tickets.pop(t, None)
+async def _mint_ws_ticket(tenant_id: str) -> str:
     ticket = secrets.token_urlsafe(24)
-    _ws_tickets[ticket] = (tenant_id, now + WS_TICKET_TTL_SECONDS)
+    if shared_state.redis_enabled():
+        await shared_state.get_redis().set(f"{WS_TICKET_KEY_PREFIX}{ticket}", tenant_id, ex=WS_TICKET_TTL_SECONDS)
+        return ticket
+    now = time.time()
+    expired = [t for t, (_, exp) in _local_ws_tickets.items() if exp < now]
+    for t in expired:
+        _local_ws_tickets.pop(t, None)
+    _local_ws_tickets[ticket] = (tenant_id, now + WS_TICKET_TTL_SECONDS)
     return ticket
 
 
-def _consume_ws_ticket(ticket: str) -> Optional[str]:
-    entry = _ws_tickets.pop(ticket, None)  # single-use: pop, don't peek
+async def _consume_ws_ticket(ticket: str) -> Optional[str]:
+    if shared_state.redis_enabled():
+        client = shared_state.get_redis()
+        key = f"{WS_TICKET_KEY_PREFIX}{ticket}"
+        try:
+            return await client.getdel(key)  # atomic single-use consumption (Redis >= 6.2)
+        except AttributeError:  # older redis-py/server without GETDEL
+            tenant_id = await client.get(key)
+            if tenant_id:
+                await client.delete(key)
+            return tenant_id
+    entry = _local_ws_tickets.pop(ticket, None)  # single-use: pop, don't peek
     if not entry:
         return None
     tenant_id, expires_at = entry
@@ -541,7 +632,7 @@ def _consume_ws_ticket(ticket: str) -> Optional[str]:
 @app.post("/api/ws-ticket")
 async def issue_ws_ticket(request: Request, key: ApiKeyRecord = Depends(require_api_key)):
     check_rate_limit(request, key)
-    ticket = _mint_ws_ticket(key.id)
+    ticket = await _mint_ws_ticket(key.id)
     return {"ticket": ticket, "expires_in": WS_TICKET_TTL_SECONDS}
 
 
@@ -550,7 +641,7 @@ async def websocket_live(websocket: WebSocket, ticket: Optional[str] = None):
     if len(ws_clients) >= MAX_WS_CLIENTS:
         await websocket.close(code=1013)  # try again later
         return
-    tenant_id = _consume_ws_ticket(ticket) if ticket else None
+    tenant_id = await _consume_ws_ticket(ticket) if ticket else None
     if not tenant_id:
         await websocket.close(code=4401)  # custom: invalid/expired/missing ticket
         return
@@ -562,7 +653,7 @@ async def websocket_live(websocket: WebSocket, ticket: Optional[str] = None):
         await websocket.send_text(json.dumps({
             "type": "init",
             "recent_events": recent[:10],
-            "provider": detector.analyzer.provider,
+            "provider": websocket.app.state.detector.analyzer.provider,
         }))
         while True:
             await websocket.receive_text()  # keep alive
@@ -597,6 +688,7 @@ class OutputScanRequest(BaseModel):
 async def inspect(
     req: InspectRequest, background_tasks: BackgroundTasks, request: Request,
     key: ApiKeyRecord = Depends(require_api_key),
+    detector: ThreatDetector = Depends(get_detector),
 ):
     check_rate_limit(request, key)
     if not req.text or not req.text.strip():
@@ -630,7 +722,11 @@ async def inspect(
 
 
 @app.post("/api/inspect/batch")
-async def inspect_batch(req: BatchInspectRequest, request: Request, key: ApiKeyRecord = Depends(require_api_key)):
+async def inspect_batch(
+    req: BatchInspectRequest, request: Request,
+    key: ApiKeyRecord = Depends(require_api_key),
+    detector: ThreatDetector = Depends(get_detector),
+):
     check_rate_limit(request, key)
     if len(req.items) > MAX_BATCH_ITEMS:
         raise HTTPException(400, f"Max {MAX_BATCH_ITEMS} items per batch")
@@ -670,7 +766,9 @@ async def inspect_batch(req: BatchInspectRequest, request: Request, key: ApiKeyR
 
 @app.post("/api/scan/output")
 async def scan_output(
-    req: OutputScanRequest, request: Request, key: ApiKeyRecord = Depends(require_api_key),
+    req: OutputScanRequest, request: Request,
+    key: ApiKeyRecord = Depends(require_api_key),
+    output_guard: OutputGuard = Depends(get_output_guard),
 ):
     """
     Bidirectional protection: scan an AGENT OUTPUT for data leakage
@@ -803,8 +901,12 @@ async def list_patterns(category: Optional[str] = None, level: Optional[str] = N
 
 
 @app.get("/api/session/{session_id}")
-async def session_stats(session_id: str, key: ApiKeyRecord = Depends(require_api_key)):
-    stats = detector.session_manager.get_session_stats(_scoped_session_id(key, session_id))
+async def session_stats(
+    session_id: str,
+    key: ApiKeyRecord = Depends(require_api_key),
+    detector: ThreatDetector = Depends(get_detector),
+):
+    stats = await detector.session_manager.get_session_stats(_scoped_session_id(key, session_id))
     if not stats:
         raise HTTPException(404, "Session not found")
     stats["session_id"] = session_id  # return the caller's own id, not the internal tenant-scoped one
@@ -812,8 +914,13 @@ async def session_stats(session_id: str, key: ApiKeyRecord = Depends(require_api
 
 
 @app.get("/api/status")
-async def status():
-    session_stats = detector.session_manager.get_all_stats()
+async def status(request: Request):
+    # Reused directly (not via the ASGI/Depends pipeline) by public_status()
+    # below, so this reads app.state through the request it's given rather
+    # than via Depends(get_detector) - a plain function call can't resolve
+    # FastAPI dependencies the way an actual routed request can.
+    detector: ThreatDetector = request.app.state.detector
+    session_stats = await detector.session_manager.get_all_stats()
     return {
         "status": "operational",
         "version": "1.0.0",
@@ -836,237 +943,18 @@ async def status():
 
 
 @app.get("/")
-async def root():
-    return HTMLResponse("""
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>AgentShield API</title>
-  <style>
-    body {
-      margin: 0;
-      min-height: 100vh;
-      display: grid;
-      place-items: center;
-      background: radial-gradient(circle at 20% 20%, #16345f, transparent 34%),
-        radial-gradient(circle at 82% 72%, #432017, transparent 30%),
-        #05070c;
-      color: #f5f7fb;
-      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    }
-    main {
-      width: min(760px, calc(100vw - 40px));
-      padding: 44px;
-      border: 1px solid rgba(255, 255, 255, 0.14);
-      border-radius: 24px;
-      background: rgba(18, 22, 30, 0.72);
-      box-shadow: 0 30px 90px rgba(0, 0, 0, 0.42);
-      backdrop-filter: blur(22px);
-    }
-    .badge {
-      display: inline-flex;
-      gap: 8px;
-      align-items: center;
-      padding: 8px 12px;
-      border-radius: 999px;
-      color: #71f083;
-      background: rgba(57, 255, 109, 0.12);
-      border: 1px solid rgba(113, 240, 131, 0.22);
-      font-weight: 700;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      font-size: 12px;
-    }
-    h1 {
-      margin: 22px 0 12px;
-      font-size: clamp(40px, 7vw, 72px);
-      line-height: 0.95;
-      letter-spacing: 0;
-    }
-    p {
-      margin: 0;
-      color: #c7ccd8;
-      font-size: 18px;
-      line-height: 1.65;
-      max-width: 620px;
-    }
-    nav {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 12px;
-      margin-top: 32px;
-    }
-    a {
-      color: #f5f7fb;
-      text-decoration: none;
-      padding: 12px 16px;
-      border-radius: 14px;
-      background: rgba(255, 255, 255, 0.09);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      font-weight: 700;
-    }
-    a.primary {
-      background: #2f7df6;
-      border-color: #5d9bff;
-    }
-  </style>
-</head>
-<body>
-  <main>
-    <span class="badge">Operational</span>
-    <h1>AgentShield API</h1>
-    <p>Backend service for real-time input inspection, output leak scanning, trust scoring, live events, and dashboard analytics.</p>
-    <nav>
-      <a class="primary" href="/status">View Status</a>
-      <a href="/docs">API Docs</a>
-      <a href="/api/status">JSON Status</a>
-      <a href="https://agentshield-three.vercel.app">Open Platform</a>
-    </nav>
-  </main>
-</body>
-</html>
-    """)
+async def root(request: Request):
+    return templates.TemplateResponse(request=request, name="root.html")
 
 
 @app.get("/status")
-async def public_status():
-    payload = await status()
+async def public_status(request: Request):
+    payload = await status(request)
     llm_state = "Active" if payload["llm_available"] else "Offline"
-    return HTMLResponse(f"""
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>AgentShield Status</title>
-  <style>
-    body {{
-      margin: 0;
-      min-height: 100vh;
-      display: grid;
-      place-items: center;
-      background: radial-gradient(circle at 18% 22%, #153963, transparent 34%),
-        radial-gradient(circle at 88% 70%, #3f2218, transparent 32%),
-        #05070c;
-      color: #f5f7fb;
-      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    }}
-    main {{
-      width: min(900px, calc(100vw - 40px));
-      padding: 36px;
-      border: 1px solid rgba(255, 255, 255, 0.14);
-      border-radius: 24px;
-      background: rgba(18, 22, 30, 0.74);
-      box-shadow: 0 30px 90px rgba(0, 0, 0, 0.42);
-      backdrop-filter: blur(22px);
-    }}
-    .top {{
-      display: flex;
-      justify-content: space-between;
-      gap: 24px;
-      align-items: flex-start;
-      margin-bottom: 28px;
-    }}
-    .badge {{
-      padding: 8px 12px;
-      border-radius: 999px;
-      color: #71f083;
-      background: rgba(57, 255, 109, 0.12);
-      border: 1px solid rgba(113, 240, 131, 0.22);
-      font-weight: 800;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      font-size: 12px;
-    }}
-    h1 {{
-      margin: 0 0 10px;
-      font-size: clamp(34px, 5vw, 58px);
-      letter-spacing: 0;
-    }}
-    p {{
-      margin: 0;
-      color: #c7ccd8;
-      line-height: 1.55;
-    }}
-    .grid {{
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 14px;
-      margin-top: 24px;
-    }}
-    .card {{
-      min-height: 118px;
-      padding: 18px;
-      border-radius: 18px;
-      background: rgba(255, 255, 255, 0.075);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-    }}
-    .value {{
-      display: block;
-      font-size: 32px;
-      font-weight: 900;
-      color: #ffffff;
-      margin-bottom: 8px;
-    }}
-    .label {{
-      color: #b9bfcc;
-      font-size: 13px;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      font-weight: 800;
-    }}
-    nav {{
-      display: flex;
-      flex-wrap: wrap;
-      gap: 12px;
-      margin-top: 28px;
-    }}
-    a {{
-      color: #f5f7fb;
-      text-decoration: none;
-      padding: 12px 16px;
-      border-radius: 14px;
-      background: rgba(255, 255, 255, 0.09);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      font-weight: 700;
-    }}
-    @media (max-width: 760px) {{
-      .grid {{
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-      }}
-      .top {{
-        flex-direction: column;
-      }}
-    }}
-  </style>
-</head>
-<body>
-  <main>
-    <section class="top">
-      <div>
-        <h1>AgentShield Status</h1>
-        <p>The backend is live and ready to inspect prompts, scan outputs, stream dashboard events, and serve analytics.</p>
-      </div>
-      <span class="badge">{payload["status"]}</span>
-    </section>
-    <section class="grid">
-      <div class="card"><span class="value">{payload["pattern_count"]}</span><span class="label">Input Patterns</span></div>
-      <div class="card"><span class="value">{payload["output_pattern_count"]}</span><span class="label">Output Patterns</span></div>
-      <div class="card"><span class="value">{llm_state}</span><span class="label">Model Layer</span></div>
-      <div class="card"><span class="value">{payload["ws_clients"]}</span><span class="label">Live Clients</span></div>
-    </section>
-    <nav>
-      <a href="/">Service Home</a>
-      <a href="/docs">API Docs</a>
-      <a href="/api/status">JSON Status</a>
-      <a href="https://agentshield-three.vercel.app">Open Platform</a>
-    </nav>
-  </main>
-</body>
-</html>
-    """)
+    return templates.TemplateResponse(
+        request=request, name="status.html", context={"payload": payload, "llm_state": llm_state},
+    )
+
 
 
 # ── Pre-built attack scenarios for demo ──────────────────────────────────────
@@ -1139,16 +1027,16 @@ async def demo_attacks():
 # ── Admin Operations ─────────────────────────────────────────────────────────
 
 @app.post("/api/admin/clear-cache")
-async def clear_cache(x_admin_key: Optional[str] = Header(None)):
+async def clear_cache(x_admin_key: Optional[str] = Header(None), detector: ThreatDetector = Depends(get_detector)):
     require_admin(x_admin_key)
-    detector.analyzer.clear_cache()
+    await detector.analyzer.clear_cache()
     return {"status": "success", "message": "LLM Analysis cache cleared."}
 
 
 @app.post("/api/admin/reset-sessions")
-async def reset_sessions(x_admin_key: Optional[str] = Header(None)):
+async def reset_sessions(x_admin_key: Optional[str] = Header(None), detector: ThreatDetector = Depends(get_detector)):
     require_admin(x_admin_key)
-    detector.session_manager._sessions.clear()
+    await detector.session_manager.reset_all()
     return {"status": "success", "message": "All session states wiped."}
 
 
@@ -1164,12 +1052,13 @@ async def toggle_generator(x_admin_key: Optional[str] = Header(None)):
 
 
 @app.get("/api/admin/config")
-async def get_admin_config(x_admin_key: Optional[str] = Header(None)):
+async def get_admin_config(x_admin_key: Optional[str] = Header(None), detector: ThreatDetector = Depends(get_detector)):
     require_admin(x_admin_key)
+    session_stats = await detector.session_manager.get_all_stats()
     return {
         "demo_traffic_enabled": admin_settings["demo_traffic_enabled"],
-        "llm_cache_size": len(detector.analyzer._cache),
-        "total_active_sessions": len(detector.session_manager._sessions),
+        "llm_cache_size": await detector.analyzer.cache_size(),
+        "total_active_sessions": session_stats["total_sessions"],
     }
 
 

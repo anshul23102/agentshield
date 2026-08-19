@@ -3,7 +3,10 @@ services:
     name: agentshield-api
     runtime: python
     rootDir: backend
-    buildCommand: pip install -r requirements.txt
+    # requirements.lock pins the full transitive dependency tree, not just
+    # direct deps - requirements.txt alone previously let pip silently pull
+    # an incompatible `websockets` and break the live dashboard in production.
+    buildCommand: pip install -r requirements.lock
     startCommand: python run_server.py
     envVars:
       - key: PYTHON_VERSION

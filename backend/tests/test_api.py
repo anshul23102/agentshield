@@ -106,6 +106,28 @@ async def test_demo_attacks_and_leaks_are_served(client):
     assert leaks.status_code == 200 and len(leaks.json()["leaks"]) > 0
 
 
+# ── HTML landing/status pages (Jinja2 templates, not inline Python f-strings) ─
+
+async def test_root_page_renders_html(raw_client):
+    resp = await raw_client.get("/")
+    assert resp.status_code == 200
+    assert "text/html" in resp.headers["content-type"]
+    assert "AgentShield API" in resp.text
+    assert 'href="/status"' in resp.text
+
+
+async def test_status_page_renders_real_values_from_the_template(raw_client):
+    resp = await raw_client.get("/status")
+    assert resp.status_code == 200
+    assert "text/html" in resp.headers["content-type"]
+    # These come from Jinja2 {{ payload.* }} interpolation, not string literals -
+    # a broken template context would render "None" or raise, not this.
+    assert "AgentShield Status" in resp.text
+    assert "operational" in resp.text
+    from shield.patterns import ATTACK_PATTERNS
+    assert str(len(ATTACK_PATTERNS)) in resp.text
+
+
 # ── Auth is now required on the core service surface ────────────────────────
 
 async def test_inspect_without_api_key_is_rejected(raw_client):

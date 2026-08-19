@@ -118,6 +118,6 @@ async def test_clear_cache_empties_stored_results(monkeypatch):
                "reasoning": "clean", "recommended_action": "allow", "attack_vector": "none", "mitigation": "n/a"}
     analyzer._client.chat.completions.create = AsyncMock(return_value=fake_response(payload))
     await analyzer.analyze("cache me")
-    assert len(analyzer._cache) == 1
-    analyzer.clear_cache()
-    assert len(analyzer._cache) == 0
+    assert await analyzer.cache_size() == 1
+    await analyzer.clear_cache()
+    assert await analyzer.cache_size() == 0

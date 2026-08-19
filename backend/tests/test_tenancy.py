@@ -71,11 +71,11 @@ async def test_same_session_id_string_does_not_collide_across_tenants(two_client
 
 async def test_ws_ticket_is_single_use():
     from main import _mint_ws_ticket, _consume_ws_ticket
-    ticket = _mint_ws_ticket("tenant-x")
-    assert _consume_ws_ticket(ticket) == "tenant-x"
-    assert _consume_ws_ticket(ticket) is None  # second use must fail
+    ticket = await _mint_ws_ticket("tenant-x")
+    assert await _consume_ws_ticket(ticket) == "tenant-x"
+    assert await _consume_ws_ticket(ticket) is None  # second use must fail
 
 
 async def test_ws_ticket_rejects_unknown_token():
     from main import _consume_ws_ticket
-    assert _consume_ws_ticket("this-was-never-issued") is None
+    assert await _consume_ws_ticket("this-was-never-issued") is None

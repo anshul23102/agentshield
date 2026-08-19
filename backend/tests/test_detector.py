@@ -71,7 +71,7 @@ async def test_session_escalation_flag_triggers_on_worsening_scores(detector):
     for p in prompts:
         last = await detector.inspect(p, session_id=session_id)
     assert last is not None
-    stats = detector.session_manager.get_session_stats(session_id)
+    stats = await detector.session_manager.get_session_stats(session_id)
     assert stats["message_count"] == len(prompts)
 
 

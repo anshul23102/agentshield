@@ -166,6 +166,20 @@ pip install -r requirements.txt
 python run_server.py
 ```
 
+`requirements.txt` pins direct dependencies, but not their own transitive
+dependencies - that's exactly what let pip silently pull an incompatible
+`websockets` version and break the live dashboard, once. `requirements.lock`
+(generated with [uv](https://docs.astral.sh/uv/)) pins the entire resolved
+tree for byte-for-byte reproducible installs; it's what `render.yaml` and CI
+actually install from. Regenerate it after changing `requirements.txt`:
+
+```bash
+uv pip compile requirements.txt -o requirements.lock --python-version 3.11
+```
+
+CI fails the build if `requirements.lock` drifts from what that command
+produces, so it can't silently go stale.
+
 Optional environment variables:
 
 ```text
@@ -173,10 +187,47 @@ GITHUB_TOKEN=your_token
 GROQ_API_KEY=your_token
 OPENROUTER_API_KEY=your_token
 AGENTSHIELD_ADMIN_KEY=your_own_admin_key      # auto-generated if unset
-REDIS_URL=redis://localhost:6379              # enables distributed rate limiting; falls back to in-memory if unset
+REDIS_URL=redis://localhost:6379              # see "Running multiple workers" below; falls back to in-memory if unset
+AGENTSHIELD_DB_POOL_SIZE=5                    # see "Scaling the database" below
 ```
 
 AgentShield still works without provider tokens by using the local pattern database.
+
+### Running multiple workers
+
+By default, session tracking, the LLM cache, WebSocket tickets, and live
+broadcast fanout all live in plain process memory. That's correct for a
+single `uvicorn` process, but wrong the moment there's more than one: two
+workers behind a load balancer would have two disjoint views of session
+state (breaking multi-turn escalation detection for sessions that bounce
+between workers), two disjoint LLM caches, and a WebSocket client on worker B
+would never see an event broadcast because of a request that landed on
+worker A.
+
+Set `REDIS_URL` to fix this - every worker then shares the same session
+state, LLM cache, and ticket store, and broadcasts fan out to all workers via
+Redis pub/sub. Nothing else changes; this is purely additive infrastructure,
+not a hard dependency. Without it, AgentShield is correct for exactly one
+worker process.
+
+### Scaling the database
+
+Storage is SQLite via `aiosqlite`, in WAL mode, through a small connection
+pool (`AGENTSHIELD_DB_POOL_SIZE`, default 5) - connections are opened once
+and reused, instead of the previous behavior of opening and closing a raw
+connection on every single call.
+
+Be clear-eyed about what that pool does and doesn't fix. WAL mode lets
+multiple readers proceed concurrently, but SQLite still serializes writers -
+only one write transaction commits at a time, pool or no pool. The pool
+removes connection-open/PRAGMA overhead and helps concurrent-read
+throughput; it does not turn SQLite into a multi-writer database. If write
+throughput genuinely bottlenecks at the storage layer under real load, the
+correct fix is Postgres, not a bigger SQLite pool - that's a schema/driver
+migration (`database/db.py`'s queries are plain SQL, not SQLite-specific, so
+the path is mechanical: swap `aiosqlite` for `asyncpg`/`psycopg`, point
+`AGENTSHIELD_DB_PATH` at a `DATABASE_URL` instead), not something this
+project does today.
 
 ## Frontend Setup
 

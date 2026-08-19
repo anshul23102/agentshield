@@ -356,16 +356,85 @@ async def seed_database_if_empty(db: aiosqlite.Connection):
 
 from contextlib import asynccontextmanager
 
-@asynccontextmanager
-async def get_db_conn():
-    conn = await aiosqlite.connect(str(DB_PATH), timeout=30.0)
+# ── Connection pool ────────────────────────────────────────────────────────────
+# Previously every call opened a brand-new aiosqlite connection and closed it
+# immediately after - real file-open + PRAGMA overhead on every single query,
+# repeated for the life of the process. This pool opens DB_POOL_SIZE
+# connections once and hands them out/back via a queue, so steady-state
+# traffic reuses already-open connections instead of paying that cost per
+# call.
+#
+# Be honest about what this does and doesn't fix: SQLite still serializes
+# writers even in WAL mode (multiple readers can proceed concurrently, but
+# only one writer at a time), so this pool helps connection-reuse overhead
+# and concurrent-read throughput, not fundamental multi-writer scaling. If
+# write throughput genuinely bottlenecks at the SQLite layer, the real fix is
+# switching to Postgres, not a bigger SQLite pool - see the "Scaling the
+# database" section in the README for the honest boundary here.
+
+DB_POOL_SIZE = int(os.getenv("AGENTSHIELD_DB_POOL_SIZE", "5"))
+
+_pool: Optional[asyncio.Queue] = None
+_pool_init_lock = asyncio.Lock()
+
+
+async def _open_pooled_connection() -> aiosqlite.Connection:
+    # aiosqlite.Connection is a threading.Thread subclass backing every
+    # connection with a dedicated worker thread; aiosqlite.connect() starts
+    # that thread as non-daemon, which means an unclosed pooled connection
+    # blocks process/interpreter exit even after the app has nothing left to
+    # do. Constructing the Connection directly (matching what connect() does
+    # internally) lets the thread be marked daemon *before* it starts, so a
+    # pool that's never explicitly closed can't hang shutdown.
+    import sqlite3
+
+    def _connector() -> sqlite3.Connection:
+        return sqlite3.connect(str(DB_PATH), timeout=30.0)
+
+    conn = aiosqlite.Connection(_connector, 64)
+    conn.daemon = True
+    conn = await conn  # triggers Connection.__await__ -> start() + connect
+
     conn.row_factory = aiosqlite.Row
     await conn.execute("PRAGMA journal_mode=WAL")
     await conn.execute("PRAGMA synchronous=NORMAL")
+    return conn
+
+
+async def _get_pool() -> asyncio.Queue:
+    global _pool
+    if _pool is not None:
+        return _pool
+    async with _pool_init_lock:
+        if _pool is None:  # re-check: another task may have won the race
+            pool: asyncio.Queue = asyncio.Queue(maxsize=DB_POOL_SIZE)
+            for _ in range(DB_POOL_SIZE):
+                await pool.put(await _open_pooled_connection())
+            _pool = pool
+    return _pool
+
+
+async def close_pool():
+    """Closes every pooled connection. Call on app shutdown; tests that swap
+    AGENTSHIELD_DB_PATH between runs should also call this so a stale pool
+    doesn't keep pointing at the previous test's database file."""
+    global _pool
+    if _pool is None:
+        return
+    while not _pool.empty():
+        conn = _pool.get_nowait()
+        await conn.close()
+    _pool = None
+
+
+@asynccontextmanager
+async def get_db_conn():
+    pool = await _get_pool()
+    conn = await pool.get()
     try:
         yield conn
     finally:
-        await conn.close()
+        await pool.put(conn)
 
 
 async def init_db():
