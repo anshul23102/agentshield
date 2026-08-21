@@ -19,7 +19,7 @@ import secrets
 from dataclasses import dataclass
 from typing import Optional
 
-from fastapi import Header, HTTPException
+from fastapi import BackgroundTasks, Header, HTTPException
 
 from database.db import get_api_key_by_hash, insert_api_key, touch_api_key_last_used
 
@@ -52,12 +52,15 @@ async def create_api_key(label: Optional[str] = None) -> tuple[str, str]:
 
 
 async def verify_api_key(raw_key: str) -> Optional[ApiKeyRecord]:
+    """Read-only check: does this key exist and is it live. Deliberately does
+    NOT touch last_used_at - that write used to happen here, synchronously,
+    on every single authenticated request. See require_api_key() below for
+    where that bookkeeping write now happens instead, and why."""
     if not raw_key or not raw_key.startswith(KEY_PREFIX):
         return None
     record = await get_api_key_by_hash(_hash_key(raw_key))
     if not record:
         return None
-    await touch_api_key_last_used(record["id"])
     return ApiKeyRecord(id=record["id"], label=record.get("label"))
 
 
@@ -70,14 +73,26 @@ def _extract_raw_key(x_api_key: Optional[str], authorization: Optional[str]) -> 
 
 
 async def require_api_key(
+    background_tasks: BackgroundTasks,
     x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
     authorization: Optional[str] = Header(None),
 ) -> ApiKeyRecord:
-    """FastAPI dependency: accepts either `X-API-Key: <key>` or `Authorization: Bearer <key>`."""
+    """FastAPI dependency: accepts either `X-API-Key: <key>` or `Authorization: Bearer <key>`.
+
+    The last_used_at bookkeeping write happens as a background task, after
+    the response is already on its way, not before it - `verify_api_key()`
+    itself was previously a synchronous read-then-write on every single
+    authenticated request (every /api/inspect call paid for an extra UPDATE
+    query purely for a "when was this key last used" timestamp nobody reads
+    on the hot path). FastAPI resolves BackgroundTasks the same way whether
+    it's declared on the route or on a dependency the route depends on, so
+    this doesn't require touching every route handler that uses this.
+    """
     raw_key = _extract_raw_key(x_api_key, authorization)
     if not raw_key:
         raise HTTPException(401, "Missing API key. Send it as 'X-API-Key' or 'Authorization: Bearer <key>'.")
     record = await verify_api_key(raw_key)
     if not record:
         raise HTTPException(401, "Invalid or revoked API key.")
+    background_tasks.add_task(touch_api_key_last_used, record.id)
     return record

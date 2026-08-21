@@ -5,6 +5,7 @@ FastAPI backend with WebSocket support for live dashboard updates.
 
 import asyncio
 import json
+import logging
 import os
 import random
 import secrets
@@ -28,7 +29,7 @@ from shield.output_guard import OutputGuard, LEAK_PATTERNS, LEAK_CATEGORY_STATS
 from shield.auth import require_api_key, ApiKeyRecord, create_api_key
 from shield import shared_state
 from database.db import (
-    log_event, get_recent_events, get_analytics, init_db, close_pool,
+    log_event, get_recent_events, get_analytics, init_db, close_pool, get_db_conn,
     purge_expired_events, EVENT_RETENTION_DAYS, EVENT_CLEANUP_INTERVAL_SECONDS,
     list_api_keys, revoke_api_key,
 )
@@ -36,6 +37,16 @@ from database.db import (
 # ── Global state ─────────────────────────────────────────────────────────────
 
 load_dotenv()
+
+# Structured logging instead of bare print() - everywhere else in the backend
+# had already moved to this (see shield/input_redactor.py); main.py itself
+# was the one holdout, with no levels and no way to filter by severity in a
+# real log aggregation pipeline (Datadog, CloudWatch, etc.).
+logging.basicConfig(
+    level=os.getenv("AGENTSHIELD_LOG_LEVEL", "INFO").upper(),
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 ws_clients: dict[WebSocket, str] = {}  # websocket -> tenant_id (API key id)
 event_queue: asyncio.Queue = asyncio.Queue(maxsize=1000)
@@ -48,6 +59,10 @@ MAX_INSPECT_CHARS = int(os.getenv("AGENTSHIELD_MAX_INSPECT_CHARS", "50000"))
 MAX_OUTPUT_SCAN_CHARS = int(os.getenv("AGENTSHIELD_MAX_OUTPUT_SCAN_CHARS", "100000"))
 MAX_BATCH_ITEMS = int(os.getenv("AGENTSHIELD_MAX_BATCH_ITEMS", "50"))
 MAX_WS_CLIENTS = int(os.getenv("AGENTSHIELD_MAX_WS_CLIENTS", "200"))
+# Without this, a single API key (buggy client, or a deliberately hostile
+# one) could open connections up to the entire global cap and lock out every
+# other tenant's live dashboard - there was no per-tenant limit at all before.
+MAX_WS_CLIENTS_PER_TENANT = int(os.getenv("AGENTSHIELD_MAX_WS_CLIENTS_PER_TENANT", "20"))
 RATE_LIMIT_PER_MINUTE = int(os.getenv("AGENTSHIELD_RATE_LIMIT_PER_MINUTE", "120"))
 ALLOWED_ORIGINS = [o.strip() for o in os.getenv("AGENTSHIELD_ALLOWED_ORIGINS", "*").split(",")]
 
@@ -73,8 +88,8 @@ def _load_or_create_admin_key() -> str:
         return admin_key_file.read_text().strip()
     generated = secrets.token_urlsafe(24)
     admin_key_file.write_text(generated)
-    print(f"[startup] No AGENTSHIELD_ADMIN_KEY set. Generated one and saved it to {admin_key_file}")
-    print(f"[startup] Admin key: {generated}")
+    logger.warning("No AGENTSHIELD_ADMIN_KEY set. Generated one and saved it to %s", admin_key_file)
+    logger.warning("Admin key: %s", generated)
     return generated
 
 
@@ -103,7 +118,7 @@ try:
     if REDIS_URL:
         _distributed_limiter = MovingWindowRateLimiter(_storage_from_string(REDIS_URL))
 except Exception as exc:  # pragma: no cover - exercised only when `limits`/redis aren't available
-    print(f"[startup] Distributed rate limiting unavailable ({exc}); falling back to in-memory only.")
+    logger.warning("Distributed rate limiting unavailable (%s); falling back to in-memory only.", exc)
 
 
 class RateLimiter:
@@ -387,8 +402,8 @@ async def demo_threat_generator():
                 
         except asyncio.CancelledError:
             break
-        except Exception as e:
-            print(f"Error in demo traffic generator: {e}")
+        except Exception:
+            logger.exception("Error in demo traffic generator")
             await asyncio.sleep(1)
 
 
@@ -406,9 +421,9 @@ async def _ensure_bootstrap_api_key():
     bootstrap_file = DATA_DIR / ".bootstrap_api_key"
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     bootstrap_file.write_text(raw_key)
-    print("[startup] No API keys existed - created a bootstrap key for local development.")
-    print(f"[startup] API key: {raw_key}")
-    print(f"[startup] Saved to {bootstrap_file}")
+    logger.warning("No API keys existed - created a bootstrap key for local development.")
+    logger.warning("API key: %s", raw_key)
+    logger.warning("Saved to %s", bootstrap_file)
 
 
 @asynccontextmanager
@@ -435,8 +450,8 @@ async def lifespan(app: FastAPI):
     relay_task = None
     if shared_state.redis_enabled():
         relay_task = asyncio.create_task(redis_relay_worker())
-        print("[startup] REDIS_URL set - session state, LLM cache, WS tickets, "
-              "and broadcast fanout are now shared across all worker processes.")
+        logger.info("REDIS_URL set - session state, LLM cache, WS tickets, "
+                    "and broadcast fanout are now shared across all worker processes.")
     yield
     task.cancel()
     traffic_task.cancel()
@@ -462,6 +477,55 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.add_middleware(GZipMiddleware, minimum_size=1024)
+
+
+# ── Security response headers ────────────────────────────────────────────────
+# A security product with no security headers on its own HTTP responses is a
+# bad look and a real gap - none of this was set anywhere before. CSP allows
+# 'unsafe-inline' for style only because root.html/status.html use plain
+# <style> blocks with no build step; neither template has any <script> tag,
+# so script-src stays locked to 'self' with no inline exception needed.
+# X-XSS-Protection is deliberately NOT set - it's deprecated, removed from
+# modern browsers, and OWASP now recommends omitting it entirely in favor of
+# CSP rather than setting any value (including "0").
+_SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+    "Content-Security-Policy": "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-ancestors 'none'",
+    # Ignored by browsers over plain HTTP, so safe to always send rather than
+    # branch on request.url.scheme (which a reverse proxy can misreport anyway).
+    "Strict-Transport-Security": "max-age=63072000; includeSubDomains",
+}
+
+# FastAPI's built-in /docs and /redoc load Swagger UI/ReDoc's JS+CSS from
+# jsdelivr's CDN by default (see fastapi.openapi.docs.get_swagger_ui_html) -
+# the global CSP above would silently break those pages. Scoped exactly to
+# that one CDN host, not a wildcard, rather than exempting these routes from
+# CSP entirely. 'unsafe-inline' on script-src is unavoidable here specifically
+# (verified live, not assumed): FastAPI's docs HTML embeds an inline <script>
+# that calls SwaggerUIBundle(...) with the page's config, so the strict
+# nonce/hash-free policy silently blocked the whole page from initializing.
+_DOCS_PATHS = {"/docs", "/redoc"}
+_DOCS_CSP = (
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+    "img-src 'self' data: https://fastapi.tiangolo.com; "
+    "font-src 'self' data:; "
+    "frame-ancestors 'none'"
+)
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    for header, value in _SECURITY_HEADERS.items():
+        response.headers[header] = value
+    if request.url.path in _DOCS_PATHS:
+        response.headers["Content-Security-Policy"] = _DOCS_CSP
+    return response
 
 
 @app.exception_handler(Exception)
@@ -570,11 +634,11 @@ async def retention_cleanup_worker():
             await asyncio.sleep(EVENT_CLEANUP_INTERVAL_SECONDS)
             deleted = await purge_expired_events()
             if deleted:
-                print(f"[retention] purged {deleted} event(s) older than {EVENT_RETENTION_DAYS}d")
+                logger.info("Retention: purged %d event(s) older than %dd", deleted, EVENT_RETENTION_DAYS)
         except asyncio.CancelledError:
             break
-        except Exception as e:
-            print(f"[retention] cleanup pass failed: {e}")
+        except Exception:
+            logger.exception("Retention cleanup pass failed")
             await asyncio.sleep(5)
 
 
@@ -633,6 +697,10 @@ async def issue_ws_ticket(request: Request, key: ApiKeyRecord = Depends(require_
     return {"ticket": ticket, "expires_in": WS_TICKET_TTL_SECONDS}
 
 
+def _tenant_ws_connection_count(tenant_id: str) -> int:
+    return sum(1 for t in ws_clients.values() if t == tenant_id)
+
+
 @app.websocket("/ws/live")
 async def websocket_live(websocket: WebSocket, ticket: Optional[str] = None):
     if len(ws_clients) >= MAX_WS_CLIENTS:
@@ -641,6 +709,9 @@ async def websocket_live(websocket: WebSocket, ticket: Optional[str] = None):
     tenant_id = await _consume_ws_ticket(ticket) if ticket else None
     if not tenant_id:
         await websocket.close(code=4401)  # custom: invalid/expired/missing ticket
+        return
+    if _tenant_ws_connection_count(tenant_id) >= MAX_WS_CLIENTS_PER_TENANT:
+        await websocket.close(code=1013)  # try again later
         return
     await websocket.accept()
     ws_clients[websocket] = tenant_id
@@ -937,6 +1008,21 @@ async def status(request: Request):
         },
         **session_stats,
     }
+
+
+@app.get("/healthz")
+async def healthz():
+    """Lightweight liveness/readiness probe for load balancers and deploy
+    platforms (render.yaml's healthCheckPath points here). Deliberately does
+    no template rendering, no auth, no session/analytics work - just enough
+    to prove the process is up AND the database is actually reachable,
+    which "/" rendering successfully doesn't guarantee on its own."""
+    try:
+        async with get_db_conn() as conn:
+            await conn.execute("SELECT 1")
+    except Exception:
+        raise HTTPException(503, "Database unreachable")
+    return {"status": "ok"}
 
 
 @app.get("/")

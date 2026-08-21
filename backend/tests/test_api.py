@@ -106,6 +106,31 @@ async def test_demo_attacks_and_leaks_are_served(client):
     assert leaks.status_code == 200 and len(leaks.json()["leaks"]) > 0
 
 
+# ── Security response headers ─────────────────────────────────────────────────
+
+async def test_security_headers_present_on_a_normal_response(raw_client):
+    resp = await raw_client.get("/api/status")
+    assert resp.headers["X-Content-Type-Options"] == "nosniff"
+    assert resp.headers["X-Frame-Options"] == "DENY"
+    assert "cdn.jsdelivr.net" not in resp.headers["Content-Security-Policy"]
+
+
+async def test_docs_page_gets_the_cdn_scoped_csp_not_the_strict_one(raw_client):
+    resp = await raw_client.get("/docs")
+    csp = resp.headers["Content-Security-Policy"]
+    assert "cdn.jsdelivr.net" in csp
+    # Still not a wildcard - only that one exact host is allowed.
+    assert "script-src 'self' *" not in csp
+
+
+# ── Health check (deploy-platform liveness/readiness probe) ──────────────────
+
+async def test_healthz_reports_ok_with_no_auth_required(raw_client):
+    resp = await raw_client.get("/healthz")
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "ok"}
+
+
 # ── HTML landing/status pages (Jinja2 templates, not inline Python f-strings) ─
 
 async def test_root_page_renders_html(raw_client):

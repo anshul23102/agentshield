@@ -1,0 +1,72 @@
+# AgentShield: full local stack (backend + frontend + Redis for distributed
+# state - see backend/shield/shared_state.py for why Redis is here at all).
+#
+# REAL LIMITATION, DISCLOSED RATHER THAN HIDDEN: the backend auto-generates
+# its bootstrap API key + admin key on FIRST STARTUP (runtime), but the
+# frontend needs VITE_API_KEY baked in at BUILD time (Vite has no runtime env
+# var reading in a static build - see frontend/Dockerfile). `docker compose
+# up` on a completely fresh checkout cannot solve this in one shot; the
+# frontend image built on first run will have no working key. The two-step
+# bootstrap that actually works:
+#
+#   docker compose up -d backend
+#   cat backend/data/.bootstrap_api_key backend/data/.admin_key   # copy these
+#   docker compose build --build-arg VITE_API_KEY=<key> --build-arg VITE_ADMIN_KEY=<admin-key> frontend
+#   docker compose up -d frontend
+#
+# This is the same bootstrap-ordering problem start.sh solves for local dev
+# by writing frontend/.env.local *after* the backend reports its keys and
+# *before* `npm run dev` (which reads env vars at request time, not bake
+# time) - a static Docker build can't replicate that trick, since the image
+# is already built by the time any key exists.
+#
+# NOT SMOKE-TESTED END TO END: no Docker daemon was available in the
+# environment this was authored in. Verify with `docker compose up --build`
+# before trusting it.
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      - REDIS_URL=redis://redis:6379
+      # - GITHUB_TOKEN=
+      # - GROQ_API_KEY=
+      # - OPENROUTER_API_KEY=
+    volumes:
+      - agentshield-data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_KEY: ${VITE_API_KEY:-}
+        VITE_ADMIN_KEY: ${VITE_ADMIN_KEY:-}
+    ports:
+      - "8080:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  agentshield-data:

@@ -1,6 +1,6 @@
 """Tests for API key generation, hashing, and the FastAPI auth dependency."""
 import pytest
-from fastapi import HTTPException
+from fastapi import BackgroundTasks, HTTPException
 
 from database.db import init_db
 from shield.auth import create_api_key, verify_api_key, require_api_key, KEY_PREFIX
@@ -49,26 +49,60 @@ async def test_raw_key_is_never_persisted_in_plaintext():
 
 async def test_require_api_key_dependency_accepts_x_api_key_header():
     key_id, raw_key = await create_api_key("header test")
-    record = await require_api_key(x_api_key=raw_key, authorization=None)
+    record = await require_api_key(BackgroundTasks(), x_api_key=raw_key, authorization=None)
     assert record.id == key_id
 
 
 async def test_require_api_key_dependency_accepts_bearer_authorization():
     key_id, raw_key = await create_api_key("bearer test")
-    record = await require_api_key(x_api_key=None, authorization=f"Bearer {raw_key}")
+    record = await require_api_key(BackgroundTasks(), x_api_key=None, authorization=f"Bearer {raw_key}")
     assert record.id == key_id
 
 
 async def test_require_api_key_dependency_rejects_missing_key():
     with pytest.raises(HTTPException) as exc_info:
-        await require_api_key(x_api_key=None, authorization=None)
+        await require_api_key(BackgroundTasks(), x_api_key=None, authorization=None)
     assert exc_info.value.status_code == 401
 
 
 async def test_require_api_key_dependency_rejects_invalid_key():
     with pytest.raises(HTTPException) as exc_info:
-        await require_api_key(x_api_key=KEY_PREFIX + "bogus", authorization=None)
+        await require_api_key(BackgroundTasks(), x_api_key=KEY_PREFIX + "bogus", authorization=None)
     assert exc_info.value.status_code == 401
+
+
+async def test_verify_api_key_does_not_touch_last_used_at_itself():
+    # The whole point of the fix: verify_api_key() is now purely a read - the
+    # last_used_at write is the caller's (require_api_key's) job, deferred to
+    # a background task, not a second synchronous DB write on every request.
+    from database.db import get_db_conn
+    key_id, raw_key = await create_api_key("no-touch check")
+    await verify_api_key(raw_key)
+    async with get_db_conn() as db:
+        async with db.execute("SELECT last_used_at FROM api_keys WHERE id = ?", (key_id,)) as cur:
+            row = await cur.fetchone()
+    assert row["last_used_at"] is None
+
+
+async def test_require_api_key_schedules_last_used_update_as_background_task():
+    from database.db import get_db_conn
+    key_id, raw_key = await create_api_key("background touch check")
+    tasks = BackgroundTasks()
+    await require_api_key(tasks, x_api_key=raw_key, authorization=None)
+
+    # Not yet run - FastAPI executes background tasks after the response is
+    # sent, which in a real request means after this dependency has returned.
+    async with get_db_conn() as db:
+        async with db.execute("SELECT last_used_at FROM api_keys WHERE id = ?", (key_id,)) as cur:
+            row = await cur.fetchone()
+    assert row["last_used_at"] is None
+
+    await tasks()  # simulates FastAPI running the deferred tasks post-response
+
+    async with get_db_conn() as db:
+        async with db.execute("SELECT last_used_at FROM api_keys WHERE id = ?", (key_id,)) as cur:
+            row = await cur.fetchone()
+    assert row["last_used_at"] is not None
 
 
 async def test_revoked_key_no_longer_verifies():

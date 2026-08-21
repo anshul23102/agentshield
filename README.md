@@ -229,6 +229,22 @@ the path is mechanical: swap `aiosqlite` for `asyncpg`/`psycopg`, point
 `AGENTSHIELD_DB_PATH` at a `DATABASE_URL` instead), not something this
 project does today.
 
+### Deploying on Render's free tier: storage is not persistent
+
+Render's free web-service plan has no persistent disk - the local
+filesystem, including the SQLite database and the auto-generated
+`.admin_key`/`.bootstrap_api_key` files, is wiped on every redeploy and on
+every cold start after the free instance spins down from inactivity. This
+is a real limitation, not a configuration bug: `render.yaml` documents the
+fix (a `disk:` block) commented out, because Render only allows attaching a
+disk on the Starter plan or higher - it cannot be added while on `plan: free`.
+
+If you deploy to the free tier as-is, expect: analytics/event history reset
+periodically, and API keys silently regenerate on restart (the backend logs
+the new key each time it does - check the deploy logs, don't assume a
+stale key is still valid). Upgrading to the Starter plan and uncommenting
+the `disk:` block in `render.yaml` is what actually fixes this.
+
 ## Frontend Setup
 
 ```bash
@@ -335,7 +351,7 @@ Environment variable: VITE_API_URL=https://agentshield-api-658e.onrender.com
 **How It Is Stored:**
 - Local SQLite database in `backend/data/`
 - All sensitive values kept in environment variables (never in version control)
-- Input previews truncated to first 100 characters before storage
+- Input previews truncated to first 200 characters before storage, and scanned by the redaction pipeline before that (see "Input-log redaction" above) - never the raw prompt
 - Secrets (API keys, tokens, credentials) excluded from all logs
 
 **How It Is Protected:**
@@ -401,6 +417,10 @@ Areas where AI assistance was used:
 Human judgment and engineering decisions were applied throughout the project, including product scope, threat model choices, UI direction, deployment decisions, testing, and final review.
 
 All generated or assisted code was reviewed, edited, and integrated specifically for this project. No external project code was copied without attribution.
+
+## License
+
+MIT - see [LICENSE](LICENSE).
 
 ## Team
 

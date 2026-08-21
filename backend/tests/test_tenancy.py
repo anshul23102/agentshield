@@ -79,3 +79,26 @@ async def test_ws_ticket_is_single_use():
 async def test_ws_ticket_rejects_unknown_token():
     from main import _consume_ws_ticket
     assert await _consume_ws_ticket("this-was-never-issued") is None
+
+
+async def test_per_tenant_ws_connection_count_only_counts_that_tenant():
+    # Previously there was no per-tenant cap at all, only a global one - one
+    # API key could open connections up to the entire global limit and lock
+    # out every other tenant's live dashboard.
+    import main as main_module
+    from main import _tenant_ws_connection_count
+
+    class FakeWebSocket:
+        pass
+
+    ws_a1, ws_a2, ws_b1 = FakeWebSocket(), FakeWebSocket(), FakeWebSocket()
+    main_module.ws_clients[ws_a1] = "tenant-a"
+    main_module.ws_clients[ws_a2] = "tenant-a"
+    main_module.ws_clients[ws_b1] = "tenant-b"
+    try:
+        assert _tenant_ws_connection_count("tenant-a") == 2
+        assert _tenant_ws_connection_count("tenant-b") == 1
+        assert _tenant_ws_connection_count("tenant-c-never-connected") == 0
+    finally:
+        for ws in (ws_a1, ws_a2, ws_b1):
+            main_module.ws_clients.pop(ws, None)

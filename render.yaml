@@ -8,9 +8,23 @@ services:
     # an incompatible `websockets` and break the live dashboard in production.
     buildCommand: pip install -r requirements.lock
     startCommand: python run_server.py
+    healthCheckPath: /healthz
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.11
       - key: GITHUB_TOKEN
         sync: false
+      - key: AGENTSHIELD_DB_PATH
+        value: /var/data/agentshield.db
     plan: free
+    # Render's free tier has no persistent disk - local filesystem (including
+    # the SQLite DB and the auto-generated admin/API key files) is wiped on
+    # every redeploy or cold restart. The disk block below is what actually
+    # fixes that, but Render only allows attaching a disk on the Starter plan
+    # or higher - it cannot be added while `plan: free` above. Uncomment both
+    # once the plan is upgraded; AGENTSHIELD_DB_PATH above already points at
+    # the mount path so no other change is needed.
+    # disk:
+    #   name: agentshield-data
+    #   mountPath: /var/data
+    #   sizeGB: 1
