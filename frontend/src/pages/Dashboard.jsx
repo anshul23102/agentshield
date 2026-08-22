@@ -328,8 +328,8 @@ export default function Dashboard() {
 
               <div className="panel" style={{ display: 'grid', placeItems: 'center', minHeight: 164 }}>
                 <div style={{
-                  width: 120,
-                  height: 120,
+                  width: 140,
+                  height: 140,
                   borderRadius: '50%',
                   display: 'grid',
                   placeItems: 'center',
@@ -337,19 +337,19 @@ export default function Dashboard() {
                   boxShadow: `0 0 46px ${postureColor}22`,
                   }}>
                   <div style={{
-                    width: 88,
-                    height: 88,
+                    width: 104,
+                    height: 104,
                     borderRadius: '50%',
-                    background: 'rgba(8,8,9,0.86)',
+                    background: 'rgba(8,8,9,0.9)',
                     display: 'grid',
                     placeItems: 'center',
                     border: '1px solid rgba(255,255,255,0.12)',
                   }}>
                       <div style={{ textAlign: 'center' }}>
-                      <div style={{ fontSize: 30, lineHeight: 1, color: postureColor, fontFamily: '"Outfit", sans-serif', fontWeight: 800 }}>
+                      <div style={{ fontSize: 32, lineHeight: 1, color: postureColor, fontFamily: '"Outfit", sans-serif', fontWeight: 800 }}>
                         {avg}
                       </div>
-                      <div style={{ color: '#D1D1D6', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 800, marginTop: 7 }}>
+                      <div style={{ color: '#D1D1D6', fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700, marginTop: 6, whiteSpace: 'nowrap' }}>
                         trust score
                       </div>
                     </div>
