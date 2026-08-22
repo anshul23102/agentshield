@@ -4,20 +4,20 @@ import { Wifi, WifiOff } from 'lucide-react'
 export default function Header({ title, subtitle, wsConnected, right }) {
   return (
     <div
-      className="glass-bar flex items-center justify-between px-8 py-5"
+      className="glass-bar flex items-center justify-between px-9 py-6"
       style={{
         borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
       }}
     >
       <div>
         <h1 style={{
-          fontFamily: '"Outfit", "-apple-system", sans-serif', fontWeight: 600, fontSize: 21,
-          color: '#f5f5f7', letterSpacing: '-0.02em', lineHeight: 1.1,
+          fontFamily: '"Outfit", "-apple-system", sans-serif', fontWeight: 700, fontSize: 25,
+          color: '#ffffff', letterSpacing: '-0.025em', lineHeight: 1.1,
         }}>
           {title}
         </h1>
         {subtitle && (
-          <p style={{ fontSize: 12, color: '#86868b', marginTop: 5, letterSpacing: '-0.01em', fontFamily: '"Plus Jakarta Sans", sans-serif', fontWeight: 300 }}>
+          <p style={{ fontSize: 13, color: '#9a9aa0', marginTop: 6, letterSpacing: '-0.005em', fontFamily: '"Plus Jakarta Sans", sans-serif', fontWeight: 400 }}>
             {subtitle}
           </p>
         )}

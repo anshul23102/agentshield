@@ -56,11 +56,11 @@ export default function OutputGuard() {
         )}
       />
 
-      <div className="flex-1 overflow-y-auto p-8 pb-12">
-        <div className="max-w-[1200px] mx-auto space-y-10">
+      <div className="flex-1 overflow-y-auto p-6 sm:p-8 lg:p-10 pb-14">
+        <div className="max-w-[1240px] mx-auto space-y-10">
 
           {/* Flow diagram */}
-          <div className="card p-6 flex items-center gap-3 flex-wrap" style={{ gap: 12 }}>
+          <div className="panel flex items-center gap-3 flex-wrap" style={{ gap: 12, paddingBottom: 20, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
             {[
               { label: 'User Input', color: '#86868b' },
               { label: 'Input Guard', color: '#0071e3', activeBorder: 'rgba(0, 113, 227, 0.3)', shadow: '0 0 10px rgba(0, 113, 227, 0.15)' },
@@ -90,7 +90,7 @@ export default function OutputGuard() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-8">
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 xl:gap-0">
 
             {/* Demo scenarios */}
             <div className="space-y-4">
@@ -100,7 +100,7 @@ export default function OutputGuard() {
               <p style={{ fontSize: 13, color: '#86868b', lineHeight: 1.6, marginBottom: 12, fontFamily: '"Plus Jakarta Sans", sans-serif', fontWeight: 300 }}>
                 Select a payload simulation to test how Output Guard isolates vulnerabilities:
               </p>
-              <div className="space-y-3">
+              <div className="row-list">
                 {demos.map(d => {
                   const Icon = TYPE_ICONS[d.type] || KeyRound
                   const safe = d.type === 'None'
@@ -109,19 +109,20 @@ export default function OutputGuard() {
                       key={d.id}
                       whileHover={{ x: 4 }}
                       onClick={() => { setText(d.text); setResult(null); taRef.current?.focus() }}
-                      className="w-full text-left card p-4 flex items-center gap-3.5 transition-all duration-300"
+                      className="row-item w-full text-left transition-all duration-300"
+                      style={{ background: 'none', borderTop: 'none', borderLeft: 'none', borderRight: 'none' }}
                     >
                       <div style={{
-                        width: 34, height: 34, borderRadius: 8, flexShrink: 0,
+                        width: 30, height: 30, borderRadius: 8, flexShrink: 0,
                         background: safe ? 'rgba(52,199,89,0.08)' : 'rgba(255,59,48,0.08)',
                         border: `1px solid ${safe ? 'rgba(52,199,89,0.2)' : 'rgba(255,59,48,0.2)'}`,
                         display: 'flex', alignItems: 'center', justifyContent: 'center'
                       }}>
-                        <Icon size={14} color={safe ? '#30d158' : '#ff453a'} />
+                        <Icon size={13} color={safe ? '#30d158' : '#ff453a'} />
                       </div>
                       <div style={{ minWidth: 0 }}>
                         <div style={{ fontSize: 13, color: '#f5f5f7', fontWeight: 500, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>{d.name}</div>
-                        <div style={{ fontSize: 11, color: '#86868b', fontFamily: '"Plus Jakarta Sans", sans-serif', marginTop: 3, fontWeight: 400 }}>{d.type.toUpperCase()}</div>
+                        <div style={{ fontSize: 11, color: '#98989D', fontFamily: '"Plus Jakarta Sans", sans-serif', marginTop: 3, fontWeight: 400 }}>{d.type.toUpperCase()}</div>
                       </div>
                     </motion.button>
                   )
@@ -130,7 +131,7 @@ export default function OutputGuard() {
             </div>
 
             {/* Input + result */}
-            <div className="space-y-6">
+            <div className="space-y-6 panel-divide">
               <div>
                 <div className="flex items-center justify-between mb-2.5">
                   <span style={{ fontSize: 10, color: '#86868b', letterSpacing: '0.05em', textTransform: 'uppercase', fontWeight: 500, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>Response Payload to Scan</span>
@@ -180,8 +181,8 @@ export default function OutputGuard() {
 
                     {/* Verdict */}
                     <div>
-                      <div className="card p-6 flex items-center justify-between"
-                        style={{ borderColor: result.is_safe ? 'rgba(52,199,89,0.2)' : 'rgba(255,59,48,0.2)', background: 'rgba(20, 20, 20, 0.7)' }}>
+                      <div className="flex items-center justify-between"
+                        style={{ borderLeft: `2px solid ${result.is_safe ? 'rgba(52,199,89,0.5)' : 'rgba(255,59,48,0.5)'}`, paddingLeft: 16 }}>
                         <div>
                           <div style={{ fontFamily: '"Outfit", "-apple-system", sans-serif', fontSize: 20, fontWeight: 600, color: result.is_safe ? '#30d158' : '#ff453a', letterSpacing: '-0.02em' }}>
                             {result.is_safe ? 'PAYLOAD CLEAN' : `${result.leaks_found.length} DATA LEAKS REDACTED`}
@@ -197,14 +198,14 @@ export default function OutputGuard() {
                           <div style={{ fontSize: 9, color: '#86868b', letterSpacing: '0.05em', textTransform: 'uppercase', fontWeight: 500, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>safety</div>
                         </div>
                       </div>
-                      <div style={{ fontSize: 11, color: '#86868b', marginTop: 10, lineHeight: 1.5, fontFamily: '"Plus Jakarta Sans", sans-serif', fontWeight: 300 }}>
+                      <div style={{ fontSize: 11, color: '#86868b', marginTop: 10, lineHeight: 1.5, fontFamily: '"Plus Jakarta Sans", sans-serif', fontWeight: 300, paddingLeft: 16 }}>
                         Verifies agent outputs before delivery. Prevents data exfiltration, system prompt leakage, and exposed API credentials.
                       </div>
                     </div>
 
                     {/* Leaks */}
                     {result.leaks_found.length > 0 && (
-                      <div className="card p-6">
+                      <div className="panel" style={{ paddingTop: 20, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
                         <div style={{ fontSize: 10, color: '#86868b', letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 12, fontWeight: 500, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
                           Exfiltration Signatures Detected
                         </div>
@@ -229,7 +230,7 @@ export default function OutputGuard() {
                     )}
 
                     {/* Before / after */}
-                    <div className="card p-6">
+                    <div className="panel" style={{ paddingTop: 20, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
                       <div style={{ fontSize: 10, color: '#86868b', letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 12, fontWeight: 500, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
                         Sanitization Analysis
                       </div>

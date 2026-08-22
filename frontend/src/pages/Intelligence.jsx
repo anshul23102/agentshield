@@ -13,12 +13,11 @@ function PatternRow({ p, i }) {
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: Math.min(i * 0.015, 0.4) }}
-      className="card overflow-hidden"
-      style={{ marginBottom: 8 }}
+      style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}
     >
       <button
         onClick={() => setOpen(!open)}
-        className="w-full flex items-center gap-4 p-4 hover:bg-[rgba(255,255,255,0.02)] transition-colors duration-250"
+        className="w-full flex items-center gap-4 py-3.5 hover:bg-[rgba(255,255,255,0.02)] transition-colors duration-250"
         style={{ textAlign: 'left' }}
       >
         <span className={`badge badge-${p.threat_level}`} style={{ flexShrink: 0, minWidth: 72, justifyContent: 'center', fontFamily: '"Plus Jakarta Sans", sans-serif', fontWeight: 500 }}>{p.threat_level}</span>
@@ -38,9 +37,9 @@ function PatternRow({ p, i }) {
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.25, ease: [0.25, 0.1, 0.25, 1] }}
-            style={{ borderTop: '1px solid rgba(255, 255, 255, 0.06)', overflow: 'hidden' }}
+            style={{ overflow: 'hidden' }}
           >
-            <div className="p-6 space-y-4" style={{ background: 'rgba(255, 255, 255, 0.01)' }}>
+            <div className="pb-5 space-y-4" style={{ paddingLeft: 2 }}>
               <div style={{ fontSize: 12, color: '#86868b', fontWeight: 300, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
                 Classification Category: <span style={{ color: '#f5f5f7', fontWeight: 500 }}>{p.category}</span>
               </div>
@@ -86,8 +85,8 @@ export default function Intelligence() {
     <div className="h-full flex flex-col overflow-hidden">
       <Header title="Threat Intelligence" subtitle={`${patterns.length} attack signatures across 10 categories`} />
 
-      <div className="flex-1 overflow-y-auto p-8 pb-12">
-        <div className="max-w-[1200px] mx-auto space-y-8">
+      <div className="flex-1 overflow-y-auto p-6 sm:p-8 lg:p-10 pb-14">
+        <div className="max-w-[1240px] mx-auto space-y-8">
 
           {/* Level stats text tabs */}
           <div className="flex items-center gap-6 border-b border-[rgba(255,255,255,0.08)] pb-1">
@@ -157,7 +156,7 @@ export default function Intelligence() {
           </div>
 
           {/* List */}
-          <div className="space-y-2 pb-8">
+          <div className="pb-8">
             {loading
               ? <div style={{ textAlign: 'center', padding: '48px 0', color: '#86868b', fontSize: 12, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>LOADING INTELLIGENCE ENGINE…</div>
               : filtered.length === 0

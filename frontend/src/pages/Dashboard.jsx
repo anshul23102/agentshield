@@ -55,55 +55,40 @@ function MetricCard({ label, value, color, delay = 0, selected = false, onClick 
     <motion.button
       type="button"
       onClick={onClick}
-      initial={{ opacity: 0, y: 14 }}
+      initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay, duration: 0.42 }}
-      className="card p-4"
-      style={{
-        minHeight: 132,
-        width: '100%',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        textAlign: 'center',
-        borderColor: selected ? `${color}80` : 'rgba(255, 255, 255, 0.11)',
-        boxShadow: selected ? `0 0 26px ${color}24, inset 0 1px 0 rgba(255,255,255,0.12)` : undefined,
-        cursor: 'pointer',
-        background: selected
-          ? `linear-gradient(145deg, ${color}18, rgba(255,255,255,0.04)), rgba(15,15,16,0.72)`
-          : undefined,
-      }}
+      className={`stat-item${selected ? ' is-active' : ''}`}
+      style={{ '--stat-accent': color, paddingTop: 6, paddingBottom: 6 }}
     >
-      <div>
-        <div className="stat-num" style={{ fontSize: 44, lineHeight: 1, color, fontWeight: 800, fontFamily: '"Outfit", sans-serif' }}>
-          {typeof value === 'number' ? <Count to={value} /> : value}
-        </div>
-        <div style={{ marginTop: 14, fontSize: 11.5, color: '#D1D1D6', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 800, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
-          {label}
-        </div>
+      <div className="stat-num" style={{ fontSize: 38, lineHeight: 1, color: selected ? color : '#ffffff', fontWeight: 800, fontFamily: '"Outfit", sans-serif', transition: 'color 0.25s ease' }}>
+        {typeof value === 'number' ? <Count to={value} /> : value}
+      </div>
+      <div style={{ marginTop: 9, fontSize: 10.5, color: '#8e8e93', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+        {label}
       </div>
     </motion.button>
   )
 }
 
-function InsightCard({ title, body, color, delay = 0 }) {
+function InsightRow({ title, body, color, delay = 0 }) {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 10 }}
+      initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay, duration: 0.35 }}
-      className="card-flat p-3"
-      style={{ minHeight: 84 }}
+      className="row-item"
+      style={{ alignItems: 'flex-start' }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-        <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, boxShadow: `0 0 14px ${color}` }} />
-        <span style={{ color: '#ffffff', fontSize: 13, fontWeight: 700, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+      <span style={{ width: 7, height: 7, borderRadius: '50%', background: color, boxShadow: `0 0 12px ${color}`, marginTop: 5, flexShrink: 0 }} />
+      <div>
+        <div style={{ color: '#ffffff', fontSize: 12.5, fontWeight: 700, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
           {title}
-        </span>
+        </div>
+        <p style={{ color: '#98989D', fontSize: 11.5, lineHeight: 1.45, marginTop: 3, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+          {body}
+        </p>
       </div>
-      <p style={{ color: '#D1D1D6', fontSize: 11.5, lineHeight: 1.45, marginTop: 7, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
-        {body}
-      </p>
     </motion.div>
   )
 }
@@ -294,45 +279,45 @@ export default function Dashboard() {
         wsConnected={wsConn}
       />
 
-      <div className="flex-1 overflow-y-auto p-4 sm:p-5 lg:p-6 pb-12">
-        <div className="max-w-[1200px] mx-auto space-y-4">
+      <div className="flex-1 overflow-y-auto p-6 sm:p-8 lg:p-10 pb-14">
+        <div className="max-w-[1240px] mx-auto space-y-9">
           <motion.div
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.45 }}
-            className="card glass-sheen p-4"
+            className="card glass-sheen p-7"
             style={{
               minHeight: 190,
               background: 'linear-gradient(135deg, rgba(0,113,227,0.18), rgba(22,22,24,0.72) 42%, rgba(255,69,58,0.10))',
             }}
           >
-            <div className="grid grid-cols-1 xl:grid-cols-[1.25fr_0.75fr] gap-4 xl:gap-5 items-center">
+            <div className="grid grid-cols-1 xl:grid-cols-[1.25fr_0.75fr] gap-6 xl:gap-8 items-center">
               <div>
                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '7px 11px', borderRadius: 999, background: `${postureColor}16`, border: `1px solid ${postureColor}35`, color: postureColor, fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
                   <RadioTower size={13} />
                   {postureLabel} posture
                 </div>
-                <h2 style={{ marginTop: 12, fontSize: 22, lineHeight: 1.15, color: '#ffffff', fontFamily: '"Outfit", sans-serif', fontWeight: 800, maxWidth: 720 }}>
+                <h2 style={{ marginTop: 14, fontSize: 26, lineHeight: 1.2, color: '#ffffff', fontFamily: '"Outfit", sans-serif', fontWeight: 800, maxWidth: 720 }}>
                   {summaryText}
                 </h2>
-                <p style={{ marginTop: 9, color: '#D1D1D6', fontSize: 12, lineHeight: 1.5, maxWidth: 650, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                <p style={{ marginTop: 10, color: '#B0B0B6', fontSize: 13, lineHeight: 1.55, maxWidth: 650, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
                   Every figure below is computed from inspected traffic: volume checked, share that passed cleanly, share that required intervention, and the current trust posture.
                 </p>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 mt-4">
-                  <InsightCard
+                <div className="row-list mt-6" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                  <InsightRow
                     title={`${safeRate}% clean`}
                     body="Requests that passed without policy action. Higher means normal work is flowing."
                     color="#30d158"
                     delay={0.05}
                   />
-                  <InsightCard
+                  <InsightRow
                     title={`${reviewRate}% reviewed`}
                     body="Prompts that triggered a warning or block. This is the attention queue."
                     color="#ff9f0a"
                     delay={0.1}
                   />
-                  <InsightCard
+                  <InsightRow
                     title={status ? `${(status.pattern_count || 0) + (status.output_pattern_count || 0)} signatures` : 'Loading signatures'}
                     body="Detection rules loaded across input and output guard layers."
                     color="#0071e3"
@@ -341,7 +326,7 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              <div className="card-flat p-3" style={{ display: 'grid', placeItems: 'center', minHeight: 164 }}>
+              <div className="panel" style={{ display: 'grid', placeItems: 'center', minHeight: 164 }}>
                 <div style={{
                   width: 120,
                   height: 120,
@@ -377,13 +362,8 @@ export default function Dashboard() {
             </div>
           </motion.div>
 
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(4, minmax(220px, 1fr))',
-            gap: 12,
-            alignItems: 'stretch',
-            overflowX: 'auto',
-          }}>
+          <div className="panel" style={{ paddingTop: 22, paddingBottom: 20, borderTop: '1px solid rgba(255,255,255,0.08)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+          <div className="stat-strip">
             <MetricCard
               label="Total Inspected"
               value={total}
@@ -417,6 +397,7 @@ export default function Dashboard() {
               onClick={() => setSelectedMetric('trust')}
             />
           </div>
+          </div>
 
           <AnimatePresence mode="wait">
             <motion.div
@@ -425,13 +406,14 @@ export default function Dashboard() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.22 }}
-              className="card-flat p-3"
+              className="panel"
               style={{
                 display: 'grid',
                 gridTemplateColumns: 'minmax(260px, 1fr) minmax(280px, 0.75fr)',
-                gap: 18,
+                gap: 24,
                 alignItems: 'center',
-                borderColor: `${activeMetric.color}45`,
+                paddingLeft: 4,
+                borderLeft: `2px solid ${activeMetric.color}60`,
               }}
             >
               <div>
@@ -464,15 +446,15 @@ export default function Dashboard() {
             </motion.div>
           </AnimatePresence>
 
-          <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 xl:grid-cols-5 gap-6 xl:gap-8">
             <motion.div
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.22 }}
-              className="xl:col-span-2 card p-4"
+              className="xl:col-span-2 panel"
             >
-              <div className="section-header" style={{ marginBottom: 12, paddingBottom: 12, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                <span style={{ fontFamily: '"Outfit", sans-serif', fontSize: 15, fontWeight: 700, color: '#ffffff' }}>
+              <div className="panel-header">
+                <span className="panel-title" style={{ fontSize: 14 }}>
                   Risk Over 7 Days
                 </span>
                 <TrendingUp size={15} color="#4da3ff" />
@@ -497,7 +479,7 @@ export default function Dashboard() {
                   <Area type="monotone" dataKey="warned" stroke="#ff9f0a" fill="url(#gWarn)" strokeWidth={2} name="Warned" />
                 </AreaChart>
               </ResponsiveContainer>
-              <p style={{ fontSize: 11.5, color: '#D1D1D6', marginTop: 10, lineHeight: 1.45, borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 9, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+              <p className="panel-foot">
                 This chart shows whether risk is spiking or calming down. Red means blocked traffic, amber means warnings.
               </p>
             </motion.div>
@@ -506,17 +488,17 @@ export default function Dashboard() {
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.27 }}
-              className="xl:col-span-3 card p-4"
+              className="xl:col-span-3 panel panel-divide"
             >
-              <div className="section-header" style={{ marginBottom: 12, paddingBottom: 12, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+              <div className="panel-header">
                 <div className="flex items-center gap-2">
                   <Activity size={15} color="#4da3ff" />
-                  <span style={{ fontFamily: '"Outfit", sans-serif', fontSize: 15, fontWeight: 700, color: '#ffffff' }}>
+                  <span className="panel-title" style={{ fontSize: 14 }}>
                     Recent Decisions
                   </span>
                   <span className="live-dot" style={{ width: 5, height: 5 }} />
                 </div>
-                <span style={{ fontSize: 11, fontFamily: '"Plus Jakarta Sans", sans-serif', color: '#D1D1D6', fontWeight: 600 }}>
+                <span style={{ fontSize: 11, fontFamily: '"Plus Jakarta Sans", sans-serif', color: '#98989D', fontWeight: 600 }}>
                   {feed.length} events
                 </span>
               </div>
@@ -554,17 +536,17 @@ export default function Dashboard() {
             </motion.div>
           </div>
 
-          <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 xl:grid-cols-5 gap-6 xl:gap-8">
             <motion.div
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.32, duration: 0.4 }}
-              className="xl:col-span-2 card p-4"
+              className="xl:col-span-2 panel"
             >
-              <div className="section-header" style={{ marginBottom: 12, paddingBottom: 12, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+              <div className="panel-header">
                 <div className="flex items-center gap-2">
                   <Sliders size={14} color="#4da3ff" />
-                  <span style={{ fontFamily: '"Outfit", sans-serif', fontSize: 15, fontWeight: 700, color: '#ffffff' }}>
+                  <span className="panel-title" style={{ fontSize: 14 }}>
                     Controls
                   </span>
                 </div>
@@ -600,22 +582,27 @@ export default function Dashboard() {
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.36, duration: 0.4 }}
-              className="xl:col-span-3 card p-4"
+              className="xl:col-span-3 panel panel-divide"
             >
-              <div className="section-header" style={{ marginBottom: 12, paddingBottom: 12, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+              <div className="panel-header">
                 <div className="flex items-center gap-2">
                   <Settings size={14} color="#4da3ff" />
-                  <span style={{ fontFamily: '"Outfit", sans-serif', fontSize: 15, fontWeight: 700, color: '#ffffff' }}>
+                  <span className="panel-title" style={{ fontSize: 14 }}>
                     Engine Status
                   </span>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2.5">
-                <InsightCard title="Model layer" body={status?.llm_provider === 'github_models' ? 'GitHub Models is active for deeper analysis.' : 'Pattern-only mode is active for fast local checks.'} color="#4da3ff" />
-                <InsightCard title="Socket stream" body={`${status?.ws_clients ?? 0} live dashboard connection${(status?.ws_clients ?? 0) === 1 ? '' : 's'} receiving events.`} color="#30d158" />
-                <InsightCard title="Session memory" body={`${adminConfig.total_active_sessions} active session${adminConfig.total_active_sessions === 1 ? '' : 's'} currently tracked.`} color="#ff9f0a" />
-                <InsightCard title="Cache size" body={`${adminConfig.llm_cache_size} cached model result${adminConfig.llm_cache_size === 1 ? '' : 's'} stored for faster repeats.`} color="#ffffff" />
+              <div className="row-list" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', columnGap: 24 }}>
+                <InsightRow title="Model layer" body={
+                  status?.llm_provider === 'github_models' ? 'GitHub Models is active for deeper analysis.'
+                  : status?.llm_provider === 'groq' ? 'Groq is active for deeper analysis.'
+                  : status?.llm_provider === 'openrouter' ? 'OpenRouter is active for deeper analysis.'
+                  : 'Pattern-only mode is active for fast local checks.'
+                } color="#4da3ff" />
+                <InsightRow title="Socket stream" body={`${status?.ws_clients ?? 0} live dashboard connection${(status?.ws_clients ?? 0) === 1 ? '' : 's'} receiving events.`} color="#30d158" />
+                <InsightRow title="Session memory" body={`${adminConfig.total_active_sessions} active session${adminConfig.total_active_sessions === 1 ? '' : 's'} currently tracked.`} color="#ff9f0a" />
+                <InsightRow title="Cache size" body={`${adminConfig.llm_cache_size} cached model result${adminConfig.llm_cache_size === 1 ? '' : 's'} stored for faster repeats.`} color="#ffffff" />
               </div>
             </motion.div>
           </div>

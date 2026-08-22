@@ -261,7 +261,7 @@ export default function Pipeline() {
         subtitle="Interactive request pathway inspection through safety filters"
       />
 
-      <div className="flex-grow overflow-y-auto p-8 pb-12">
+      <div className="flex-grow overflow-y-auto p-6 sm:p-8 lg:p-10 pb-14">
         <div className="max-w-[1400px] mx-auto grid grid-cols-1 xl:grid-cols-12 gap-8">
           
           {/* Left Panel: SVG Visualization */}

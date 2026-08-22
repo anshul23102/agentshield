@@ -24,14 +24,15 @@ function Code({ code, lang = 'python' }) {
   )
 }
 
-function Section({ title, children, delay = 0 }) {
+function Section({ title, children, delay = 0, first = false }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
       transition={{ delay, duration: 0.4 }}
-      className="card p-8 space-y-6"
+      className="panel space-y-6"
+      style={first ? undefined : { paddingTop: 32, borderTop: '1px solid rgba(255, 255, 255, 0.08)' }}
     >
-      <div style={{ fontFamily: '"Outfit", "-apple-system", sans-serif', fontWeight: 600, fontSize: 18, color: '#ffffff', letterSpacing: '-0.025em', paddingBottom: 16, borderBottom: '1px solid rgba(255, 255, 255, 0.08)' }}>
+      <div style={{ fontFamily: '"Outfit", "-apple-system", sans-serif', fontWeight: 700, fontSize: 19, color: '#ffffff', letterSpacing: '-0.02em' }}>
         {title}
       </div>
       {children}
@@ -44,16 +45,18 @@ export default function Docs() {
     <div className="h-full flex flex-col overflow-hidden">
       <Header title="SDK & Integration" subtitle="Drop bidirectional protection into any agent in one line" />
 
-      <div className="flex-1 overflow-y-auto p-8 pb-12">
-        <div className="max-w-[1200px] mx-auto space-y-10">
+      <div className="flex-1 overflow-y-auto p-6 sm:p-8 lg:p-10 pb-14">
+        <div className="max-w-[1240px] mx-auto space-y-2">
 
-          <Section title="Quick Start" delay={0}>
+          <Section title="Quick Start" delay={0} first>
             <Code lang="bash" code={`# 1. Start the backend
 cd backend && python run_server.py
 
-# 2. Get a free API key (optional, enables LLM deep analysis)
-# GitHub Models: github.com/settings/tokens (no scopes needed)
-# Add to backend/.env with GITHUB_TOKEN=ghp_xxxxxx
+# 2. Add a free API key to backend/.env to enable LLM deep analysis
+# (optional - pattern/keyword/behavioral layers work without one)
+# GITHUB_TOKEN=ghp_xxxxxx      github.com/settings/tokens
+# GROQ_API_KEY=gsk_xxxxxx      console.groq.com/keys
+# OPENROUTER_API_KEY=sk-xxxxxx openrouter.ai/keys
 
 # 3. Start the dashboard
 cd frontend && npm run dev`} />
@@ -125,7 +128,7 @@ with ShieldedSession(shield, session_id="user-123") as sess:
           </Section>
 
           <Section title="REST API Reference" delay={0.15}>
-            <div className="space-y-4">
+            <div className="row-list">
               {[
                 { method: 'POST', path: '/api/inspect',      color: '#0071e3', desc: 'Inspect a prompt with full 4-layer input detection' },
                 { method: 'POST', path: '/api/inspect/batch',color: '#0071e3', desc: 'Batch inspect up to 50 prompts (parallel async)' },
@@ -135,13 +138,13 @@ with ShieldedSession(shield, session_id="user-123") as sess:
                 { method: 'GET',  path: '/api/output/patterns', color: '#ff9f0a', desc: 'Browse the output data-leak signature database' },
                 { method: 'WS',   path: '/ws/live',          color: '#af52de', desc: 'WebSocket real-time threat event stream' },
               ].map((e, i) => (
-                <div key={i} className="flex items-start gap-4 p-5 rounded-2xl" style={{ background: 'rgba(255,255,255,0.01)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                <div key={i} className="row-item" style={{ alignItems: 'flex-start' }}>
                   <span style={{ fontSize: 10, fontFamily: 'monospace', fontWeight: 600, color: e.color, flexShrink: 0, padding: '3px 9px', background: `${e.color}10`, borderRadius: 6, border: `1px solid ${e.color}25`, marginTop: 1 }}>
                     {e.method}
                   </span>
                   <div>
                     <div style={{ fontSize: 13, fontFamily: 'monospace', color: '#ffffff', fontWeight: 500 }}>{e.path}</div>
-                    <div style={{ fontSize: 12, color: '#86868b', marginTop: 6, fontWeight: 300, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>{e.desc}</div>
+                    <div style={{ fontSize: 12, color: '#98989D', marginTop: 5, fontWeight: 300, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>{e.desc}</div>
                   </div>
                 </div>
               ))}
@@ -149,15 +152,15 @@ with ShieldedSession(shield, session_id="user-123") as sess:
           </Section>
 
           <Section title="Detection Architecture" delay={0.2}>
-            <div className="space-y-4">
+            <div className="row-list">
               {[
                 { n: 1, title: 'Pattern Matching', time: '<1ms',   color: '#ff453a', desc: '54 compiled regex signatures across 10 categories. Critical patterns block immediately, no API call needed.' },
                 { n: 2, title: 'Keyword Semantic', time: '~1ms',   color: '#ff9f0a', desc: '40+ keyword signals in 3 tiers (critical/high/medium). Runs entirely in-process.' },
-                { n: 3, title: 'LLM Deep Analysis',time: '~500ms', color: '#0071e3', desc: 'GitHub Models (GPT-4o-mini, free) performs contextual threat analysis with reasoning and mitigation advice.' },
+                { n: 3, title: 'LLM Deep Analysis',time: '~500ms', color: '#0071e3', desc: 'An OpenAI-compatible provider (GitHub Models, Groq, or OpenRouter, whichever key is configured) performs contextual threat analysis with reasoning and mitigation advice.' },
                 { n: 4, title: 'Behavioral Analysis',time: 'parallel',color:'#30d158',desc: 'Session-aware tracking detects multi-turn escalation, high message rates, and gradual context poisoning.' },
               ].map(l => (
-                <div key={l.n} className="flex gap-4 p-6 rounded-2xl" style={{ background: 'rgba(255,255,255,0.01)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                  <div style={{ width: 34, height: 34, borderRadius: 8, background: `${l.color}10`, border: `1px solid ${l.color}25`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontFamily: '"Outfit", "-apple-system", sans-serif', fontWeight: 600, fontSize: 14, color: l.color, boxShadow: `0 0 10px ${l.color}05` }}>
+                <div key={l.n} className="row-item" style={{ alignItems: 'flex-start', gap: 16 }}>
+                  <div style={{ width: 32, height: 32, borderRadius: 8, background: `${l.color}10`, border: `1px solid ${l.color}25`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontFamily: '"Outfit", "-apple-system", sans-serif', fontWeight: 600, fontSize: 14, color: l.color }}>
                     {l.n}
                   </div>
                   <div>
@@ -165,7 +168,7 @@ with ShieldedSession(shield, session_id="user-123") as sess:
                       <span style={{ fontSize: 14, fontWeight: 600, color: '#ffffff', fontFamily: '"Outfit", sans-serif' }}>{l.title}</span>
                       <span style={{ fontSize: 10, fontFamily: 'monospace', color: l.color, padding: '2px 7px', background: `${l.color}10`, borderRadius: 5, fontWeight: 500 }}>{l.time}</span>
                     </div>
-                    <p style={{ fontSize: 12.5, color: '#86868b', lineHeight: 1.7, fontWeight: 300, margin: 0, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>{l.desc}</p>
+                    <p style={{ fontSize: 12.5, color: '#98989D', lineHeight: 1.7, fontWeight: 300, margin: 0, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>{l.desc}</p>
                   </div>
                 </div>
               ))}

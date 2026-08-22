@@ -211,6 +211,100 @@
     transform: translateY(-1px);
   }
 
+  /* ── Lighter surfaces ──────────────────────────────────────────────────
+     .card / .card-flat are the "glass box" treatment - reserved for the
+     one or two genuinely elevated hero elements per page. Everything else
+     uses these borderless alternatives: content sits directly on the page
+     (the starfield stays visible through it), separated by a header and a
+     hairline instead of another floating rounded rectangle. */
+  .panel {
+    position: relative;
+  }
+  .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding-bottom: 16px;
+    margin-bottom: 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  .panel-title {
+    font-family: "Outfit", -apple-system, sans-serif;
+    font-weight: 700;
+    font-size: 14.5px;
+    color: #ffffff;
+    letter-spacing: -0.015em;
+  }
+  .panel-subtitle {
+    font-size: 10px;
+    color: #98989D;
+    margin-top: 3px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .panel-foot {
+    font-size: 11px;
+    color: #98989D;
+    margin-top: 12px;
+    line-height: 1.5;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    padding-top: 10px;
+    font-weight: 300;
+  }
+
+  /* Vertical divider between adjacent borderless panels sharing a row */
+  .panel-divide {
+    border-left: 1px solid rgba(255, 255, 255, 0.08);
+    padding-left: 28px;
+  }
+  @media (max-width: 1279px) {
+    .panel-divide { border-left: none; padding-left: 0; margin-top: 24px; padding-top: 24px; border-top: 1px solid rgba(255, 255, 255, 0.08); }
+    .panel-divide:first-child { margin-top: 0; padding-top: 0; border-top: none; }
+  }
+
+  /* Horizontal stat strip - one divided row instead of N floating stat boxes */
+  .stat-strip {
+    display: flex;
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+  .stat-item {
+    flex: 1;
+    min-width: 150px;
+    padding: 6px 28px;
+    text-align: left;
+    background: none;
+    border: none;
+    border-left: 1px solid rgba(255, 255, 255, 0.08);
+    transition: background 0.25s ease;
+  }
+  .stat-item:first-child { border-left: none; padding-left: 4px; }
+  button.stat-item { cursor: pointer; }
+  button.stat-item:hover { background: rgba(255, 255, 255, 0.025); }
+  .stat-item.is-active { position: relative; }
+  .stat-item.is-active::after {
+    content: "";
+    position: absolute;
+    left: 24px;
+    right: 24px;
+    bottom: -13px;
+    height: 2px;
+    border-radius: 2px;
+    background: var(--stat-accent, #0071e3);
+  }
+
+  /* Borderless divided list - replaces a grid of small boxed tiles */
+  .row-list .row-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 15px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  }
+  .row-list .row-item:last-child { border-bottom: none; }
+
   /* Status badges */
   .badge {
     display: inline-flex;

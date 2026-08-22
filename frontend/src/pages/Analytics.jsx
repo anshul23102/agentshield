@@ -9,18 +9,19 @@ import { getAnalytics } from '../utils/api'
 
 const COLORS = ['#0071E3', '#34C759', '#FF9500', '#FF3B30', '#AF52DE', '#5AC8FA', '#FF2D55', '#8E8E93']
 
-function Card({ title, subtitle, children, delay = 0 }) {
+function Card({ title, subtitle, children, delay = 0, divide = false, className = '', style }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay, duration: 0.4 }}
-      className="card p-6"
+      className={`panel${divide ? ' panel-divide' : ''}${className ? ' ' + className : ''}`}
+      style={style}
     >
-      <div className="section-header" style={{ marginBottom: 16, paddingBottom: 14, borderBottom: '1px solid rgba(255, 255, 255, 0.06)' }}>
+      <div className="panel-header">
         <div>
-          <div style={{ fontFamily: '"Outfit", "-apple-system", sans-serif', fontWeight: 600, fontSize: 13, color: '#f5f5f7', letterSpacing: '-0.01em' }}>{title}</div>
-          {subtitle && <div style={{ fontSize: 10, color: '#86868b', marginTop: 4, fontWeight: 500, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>{subtitle.toUpperCase()}</div>}
+          <div className="panel-title">{title}</div>
+          {subtitle && <div className="panel-subtitle">{subtitle}</div>}
         </div>
       </div>
       {children}
@@ -68,22 +69,22 @@ export default function Analytics() {
     <div className="h-full flex flex-col overflow-hidden">
       <Header title="Analytics" subtitle="Detection performance across all dimensions" />
 
-      <div className="flex-1 overflow-y-auto p-8 pb-12">
-        <div className="max-w-[1200px] mx-auto space-y-10">
+      <div className="flex-1 overflow-y-auto p-6 sm:p-8 lg:p-10 pb-14">
+        <div className="max-w-[1240px] mx-auto space-y-10">
 
           {/* KPI strip */}
-          <div className="grid grid-cols-4 gap-4">
+          <div className="stat-strip" style={{ paddingBottom: 20, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
             {kpis.map((k, i) => (
               <motion.div
                 key={i}
                 initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.06 }}
-                className="card p-6 text-center"
+                className="stat-item"
               >
-                <div style={{ fontFamily: '"Outfit", "-apple-system", sans-serif', fontWeight: 600, fontSize: 36, color: k.color || '#f5f5f7', letterSpacing: '-0.05em', lineHeight: 1 }}>
+                <div style={{ fontFamily: '"Outfit", "-apple-system", sans-serif', fontWeight: 600, fontSize: 32, color: k.color || '#f5f5f7', letterSpacing: '-0.03em', lineHeight: 1 }}>
                   {k.value}
                 </div>
-                <div style={{ fontSize: 10, color: '#86868b', letterSpacing: '0.05em', textTransform: 'uppercase', marginTop: 8, fontWeight: 500, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                <div style={{ fontSize: 10, color: '#98989D', letterSpacing: '0.06em', textTransform: 'uppercase', marginTop: 8, fontWeight: 700, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
                   {k.label}
                 </div>
               </motion.div>
@@ -91,7 +92,7 @@ export default function Analytics() {
           </div>
 
           {/* Distribution + 7-day */}
-          <div className="grid grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 xl:gap-0">
             <Card title="Action Distribution" subtitle="by verdict" delay={0.1}>
               <ResponsiveContainer width="100%" height={180}>
                 <PieChart>
@@ -112,40 +113,38 @@ export default function Analytics() {
                   <Legend wrapperStyle={{ fontSize: 11, fontFamily: '"Plus Jakarta Sans", sans-serif', color: '#86868b' }} />
                 </PieChart>
               </ResponsiveContainer>
-              <div style={{ fontSize: 11, color: '#86868b', marginTop: 10, lineHeight: 1.5, borderTop: '1px solid rgba(255, 255, 255, 0.06)', paddingTop: 8, fontWeight: 300, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+              <div className="panel-foot">
                 Proportion of inspection verdicts. Blocked: threats immediately dropped. Warned: suspected anomalies logged. Allowed: validated safe traffic.
               </div>
             </Card>
 
-            <Card title="7-Day Trend" subtitle="blocked vs warned" delay={0.15} >
-              <div className="col-span-2" style={{ display: 'contents' }}>
-                <ResponsiveContainer width="100%" height={180}>
-                  <LineChart data={daily}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.04)" vertical={false} />
-                    <XAxis dataKey="date" stroke="#86868b" fontSize={10} fontFamily='"Plus Jakarta Sans"' axisLine={false} tickLine={false} />
-                    <YAxis stroke="#86868b" fontSize={10} fontFamily='"Plus Jakarta Sans"' axisLine={false} tickLine={false} />
-                    <Tooltip
-                      contentStyle={{
-                        background: 'rgba(15, 15, 15, 0.85)',
-                        backdropFilter: 'blur(20px)',
-                        border: '1px solid rgba(255, 255, 255, 0.08)',
-                        borderRadius: '12px',
-                        fontFamily: '"Plus Jakarta Sans", sans-serif',
-                        fontSize: '11px',
-                        color: '#ffffff'
-                      }}
-                    />
-                    <Line type="monotone" dataKey="blocked" stroke="#ff3b30" strokeWidth={2} dot={false} name="Blocked" />
-                    <Line type="monotone" dataKey="warned"  stroke="#ff9500" strokeWidth={1.5} dot={false} name="Warned" />
-                  </LineChart>
-                </ResponsiveContainer>
-                <div style={{ fontSize: 11, color: '#86868b', marginTop: 10, lineHeight: 1.5, borderTop: '1px solid rgba(255, 255, 255, 0.06)', paddingTop: 8, fontWeight: 300, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
-                  Daily comparison of hard drops (Blocked) versus soft warnings (Warned) over the trailing week.
-                </div>
+            <Card title="7-Day Trend" subtitle="blocked vs warned" delay={0.15} divide>
+              <ResponsiveContainer width="100%" height={180}>
+                <LineChart data={daily}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.04)" vertical={false} />
+                  <XAxis dataKey="date" stroke="#86868b" fontSize={10} fontFamily='"Plus Jakarta Sans"' axisLine={false} tickLine={false} />
+                  <YAxis stroke="#86868b" fontSize={10} fontFamily='"Plus Jakarta Sans"' axisLine={false} tickLine={false} />
+                  <Tooltip
+                    contentStyle={{
+                      background: 'rgba(15, 15, 15, 0.85)',
+                      backdropFilter: 'blur(20px)',
+                      border: '1px solid rgba(255, 255, 255, 0.08)',
+                      borderRadius: '12px',
+                      fontFamily: '"Plus Jakarta Sans", sans-serif',
+                      fontSize: '11px',
+                      color: '#ffffff'
+                    }}
+                  />
+                  <Line type="monotone" dataKey="blocked" stroke="#ff3b30" strokeWidth={2} dot={false} name="Blocked" />
+                  <Line type="monotone" dataKey="warned"  stroke="#ff9500" strokeWidth={1.5} dot={false} name="Warned" />
+                </LineChart>
+              </ResponsiveContainer>
+              <div className="panel-foot">
+                Daily comparison of hard drops (Blocked) versus soft warnings (Warned) over the trailing week.
               </div>
             </Card>
 
-            <Card title="Category Breakdown" subtitle="top attack types" delay={0.2}>
+            <Card title="Category Breakdown" subtitle="top attack types" delay={0.2} divide>
               <div className="space-y-2.5 mt-1">
                 {cats.length > 0 ? cats.map((c, i) => (
                   <div key={i} className="flex items-center gap-3">
@@ -170,14 +169,14 @@ export default function Analytics() {
                   </div>
                 )}
               </div>
-              <div style={{ fontSize: 11, color: '#86868b', marginTop: 10, lineHeight: 1.5, borderTop: '1px solid rgba(255, 255, 255, 0.06)', paddingTop: 8, fontWeight: 300, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+              <div className="panel-foot">
                 Frequency breakdown of specific threat types. Higher values represent active attack vectors targeting agent endpoints.
               </div>
             </Card>
           </div>
 
           {/* Hourly */}
-          <Card title="Hourly Activity Today" subtitle="threat events per hour" delay={0.3}>
+          <Card title="Hourly Activity Today" subtitle="threat events per hour" delay={0.3} className="pt-8" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
             <ResponsiveContainer width="100%" height={140}>
               <BarChart data={hourly} barSize={8}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.04)" vertical={false} />
@@ -197,14 +196,14 @@ export default function Analytics() {
                 <Bar dataKey="count" fill="#0071e3" radius={[2,2,0,0]} name="Events" />
               </BarChart>
             </ResponsiveContainer>
-            <div style={{ fontSize: 11, color: '#86868b', marginTop: 10, lineHeight: 1.5, borderTop: '1px solid rgba(255, 255, 255, 0.06)', paddingTop: 8, fontWeight: 300, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+            <div className="panel-foot">
               Distribution of security logs by hour of day. Helps security operators detect automated brute-force windows.
             </div>
           </Card>
 
           {/* Top patterns */}
           {patterns.length > 0 && (
-            <Card title="Top Triggered Patterns" subtitle="most-matched signatures" delay={0.35}>
+            <Card title="Top Triggered Patterns" subtitle="most-matched signatures" delay={0.35} className="pt-8" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
               <div className="space-y-3 pb-4">
                 {patterns.slice(0, 8).map((p, i) => (
                   <div key={i} className="flex items-center gap-3">
@@ -223,7 +222,7 @@ export default function Analytics() {
                   </div>
                 ))}
               </div>
-              <div style={{ fontSize: 11, color: '#86868b', marginTop: 10, lineHeight: 1.5, borderTop: '1px solid rgba(255, 255, 255, 0.06)', paddingTop: 8, fontWeight: 300, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+              <div className="panel-foot">
                 Individual security rule matches. Useful for assessing rule severity and adjusting pattern-matching rules.
               </div>
             </Card>

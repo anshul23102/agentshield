@@ -224,8 +224,8 @@ export default function Simulator() {
 
                       {/* Verdict */}
                       <div>
-                        <div className="flex items-center justify-between p-6 rounded-2xl animate-fadeUp"
-                          style={{ background: 'rgba(20, 20, 20, 0.7)', border: `1px solid ${a.border}`, boxShadow: `0 8px 30px rgba(0,0,0,0.3)` }}>
+                        <div className="flex items-center justify-between animate-fadeUp"
+                          style={{ borderLeft: `2px solid ${a.color}80`, paddingLeft: 16 }}>
                           <div className="flex items-center gap-4">
                             <Icon size={24} color={a.color} style={{ filter: `drop-shadow(0 0 6px ${a.color})` }} />
                             <div>
@@ -248,7 +248,7 @@ export default function Simulator() {
 
                       {/* Pattern matches */}
                       {result.pattern_matches?.length > 0 && (
-                        <div className="card p-6">
+                        <div className="panel" style={{ paddingTop: 20, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
                           <div style={{ fontSize: 10, color: '#86868b', letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 14, fontWeight: 500, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
                             Pattern Matches ({result.pattern_matches.length})
                           </div>
@@ -274,7 +274,7 @@ export default function Simulator() {
 
                       {/* LLM Analysis */}
                       {result.llm_analysis && (
-                        <div className="card p-6">
+                        <div className="panel" style={{ paddingTop: 20, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
                           <div className="flex items-center justify-between mb-4">
                             <span style={{ fontSize: 10, color: '#86868b', letterSpacing: '0.05em', textTransform: 'uppercase', fontWeight: 500, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
                               LLM Deep Analysis
@@ -300,7 +300,7 @@ export default function Simulator() {
                       )}
 
                       {/* Detection chain */}
-                      <div className="card p-6">
+                      <div className="panel" style={{ paddingTop: 20, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
                         <div style={{ fontSize: 10, color: '#86868b', letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 14, fontWeight: 500, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
                           Pipeline Execution Path
                         </div>

@@ -96,7 +96,7 @@ export default function App() {
 
               <div style={{ position: 'relative', zIndex: 10, display: 'flex', height: '100vh', overflow: 'hidden' }}>
                 <Sidebar />
-                <main style={{ flex: 1, marginLeft: 220, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                <main style={{ flex: 1, marginLeft: 248, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                   <PageBoundary>
                     <Suspense fallback={<Loader />}>
                       <Routes>
