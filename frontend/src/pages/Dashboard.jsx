@@ -29,6 +29,7 @@ import {
   toggleDemoTraffic,
   clearLLMCache,
   resetSessions,
+  hasAdminAccess,
 } from '../utils/api'
 
 function Count({ to, suffix = '' }) {
@@ -160,6 +161,7 @@ export default function Dashboard() {
   useEffect(() => setWsConn(connected), [connected])
 
   const refreshAdmin = () => {
+    if (!hasAdminAccess) return
     getAdminConfig().then(setAdminConfig).catch(() => {})
   }
 
@@ -536,53 +538,55 @@ export default function Dashboard() {
             </motion.div>
           </div>
 
-          <div className="grid grid-cols-1 xl:grid-cols-5 gap-6 xl:gap-8">
-            <motion.div
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.32, duration: 0.4 }}
-              className="xl:col-span-2 panel"
-            >
-              <div className="panel-header">
-                <div className="flex items-center gap-2">
-                  <Sliders size={14} color="#4da3ff" />
-                  <span className="panel-title" style={{ fontSize: 14 }}>
-                    Controls
-                  </span>
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <button
-                  onClick={handleToggleTraffic}
-                  className="flex items-center justify-between w-full p-3.5 rounded-xl transition-all duration-250 text-left hover:bg-[rgba(255,255,255,0.02)]"
-                  style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)' }}
-                >
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: '#ffffff', fontFamily: '"Plus Jakarta Sans", sans-serif' }}>Demo Traffic</div>
-                    <div style={{ fontSize: 11, color: '#D1D1D6', marginTop: 3, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>Feeds the dashboard with sample events.</div>
+          <div className={hasAdminAccess ? "grid grid-cols-1 xl:grid-cols-5 gap-6 xl:gap-8" : ""}>
+            {hasAdminAccess && (
+              <motion.div
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.32, duration: 0.4 }}
+                className="xl:col-span-2 panel"
+              >
+                <div className="panel-header">
+                  <div className="flex items-center gap-2">
+                    <Sliders size={14} color="#4da3ff" />
+                    <span className="panel-title" style={{ fontSize: 14 }}>
+                      Controls
+                    </span>
                   </div>
-                  <span style={{ fontSize: 11, fontWeight: 800, color: adminConfig.demo_traffic_enabled ? '#30d158' : '#ff9f0a', fontFamily: 'monospace' }}>
-                    {adminConfig.demo_traffic_enabled ? 'RUNNING' : 'PAUSED'}
-                  </span>
-                </button>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <button onClick={handleClearCache} className="btn btn-secondary text-xs flex items-center justify-center gap-2 py-3 rounded-xl">
-                    <Trash2 size={13} /> Cache
-                  </button>
-                  <button onClick={handleResetSessions} className="btn btn-secondary text-xs flex items-center justify-center gap-2 py-3 rounded-xl">
-                    <Database size={13} /> Sessions
-                  </button>
                 </div>
-              </div>
-            </motion.div>
+
+                <div className="space-y-3">
+                  <button
+                    onClick={handleToggleTraffic}
+                    className="flex items-center justify-between w-full p-3.5 rounded-xl transition-all duration-250 text-left hover:bg-[rgba(255,255,255,0.02)]"
+                    style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)' }}
+                  >
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: '#ffffff', fontFamily: '"Plus Jakarta Sans", sans-serif' }}>Demo Traffic</div>
+                      <div style={{ fontSize: 11, color: '#D1D1D6', marginTop: 3, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>Feeds the dashboard with sample events.</div>
+                    </div>
+                    <span style={{ fontSize: 11, fontWeight: 800, color: adminConfig.demo_traffic_enabled ? '#30d158' : '#ff9f0a', fontFamily: 'monospace' }}>
+                      {adminConfig.demo_traffic_enabled ? 'RUNNING' : 'PAUSED'}
+                    </span>
+                  </button>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <button onClick={handleClearCache} className="btn btn-secondary text-xs flex items-center justify-center gap-2 py-3 rounded-xl">
+                      <Trash2 size={13} /> Cache
+                    </button>
+                    <button onClick={handleResetSessions} className="btn btn-secondary text-xs flex items-center justify-center gap-2 py-3 rounded-xl">
+                      <Database size={13} /> Sessions
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            )}
 
             <motion.div
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.36, duration: 0.4 }}
-              className="xl:col-span-3 panel panel-divide"
+              className={hasAdminAccess ? "xl:col-span-3 panel panel-divide" : "panel"}
             >
               <div className="panel-header">
                 <div className="flex items-center gap-2">
@@ -601,8 +605,12 @@ export default function Dashboard() {
                   : 'Pattern-only mode is active for fast local checks.'
                 } color="#4da3ff" />
                 <InsightRow title="Socket stream" body={`${status?.ws_clients ?? 0} live dashboard connection${(status?.ws_clients ?? 0) === 1 ? '' : 's'} receiving events.`} color="#30d158" />
-                <InsightRow title="Session memory" body={`${adminConfig.total_active_sessions} active session${adminConfig.total_active_sessions === 1 ? '' : 's'} currently tracked.`} color="#ff9f0a" />
-                <InsightRow title="Cache size" body={`${adminConfig.llm_cache_size} cached model result${adminConfig.llm_cache_size === 1 ? '' : 's'} stored for faster repeats.`} color="#ffffff" />
+                {hasAdminAccess && (
+                  <>
+                    <InsightRow title="Session memory" body={`${adminConfig.total_active_sessions} active session${adminConfig.total_active_sessions === 1 ? '' : 's'} currently tracked.`} color="#ff9f0a" />
+                    <InsightRow title="Cache size" body={`${adminConfig.llm_cache_size} cached model result${adminConfig.llm_cache_size === 1 ? '' : 's'} stored for faster repeats.`} color="#ffffff" />
+                  </>
+                )}
               </div>
             </motion.div>
           </div>

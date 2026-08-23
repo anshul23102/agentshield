@@ -58,6 +58,16 @@ admin_settings = {
 MAX_INSPECT_CHARS = int(os.getenv("AGENTSHIELD_MAX_INSPECT_CHARS", "50000"))
 MAX_OUTPUT_SCAN_CHARS = int(os.getenv("AGENTSHIELD_MAX_OUTPUT_SCAN_CHARS", "100000"))
 MAX_BATCH_ITEMS = int(os.getenv("AGENTSHIELD_MAX_BATCH_ITEMS", "50"))
+# The largest a legitimate request body can be (batch inspect: up to
+# MAX_BATCH_ITEMS texts at MAX_INSPECT_CHARS each), tripled for JSON
+# structure/escaping overhead and multi-byte UTF-8. Rejected by Content-Length
+# before the body is ever read, not after Pydantic has already buffered it
+# into memory - that's the actual gap this closes, since the per-field char
+# limits above only run *after* the full request body is parsed.
+MAX_BODY_BYTES = int(os.getenv(
+    "AGENTSHIELD_MAX_BODY_BYTES",
+    str(max(MAX_OUTPUT_SCAN_CHARS, MAX_BATCH_ITEMS * MAX_INSPECT_CHARS) * 3),
+))
 MAX_WS_CLIENTS = int(os.getenv("AGENTSHIELD_MAX_WS_CLIENTS", "200"))
 # Without this, a single API key (buggy client, or a deliberately hostile
 # one) could open connections up to the entire global cap and lock out every
@@ -177,7 +187,10 @@ def check_rate_limit(request: Request, key: ApiKeyRecord):
 
 
 def require_admin(x_admin_key: Optional[str]):
-    if x_admin_key != ADMIN_KEY:
+    # secrets.compare_digest instead of `!=` - a plain string comparison
+    # short-circuits on the first mismatched byte, which leaks the correct
+    # key's length/prefix through response timing over many attempts.
+    if not x_admin_key or not secrets.compare_digest(x_admin_key, ADMIN_KEY):
         raise HTTPException(403, "Invalid or missing admin key.")
 
 
@@ -477,6 +490,27 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.add_middleware(GZipMiddleware, minimum_size=1024)
+
+
+@app.middleware("http")
+async def reject_oversized_bodies(request: Request, call_next):
+    # Checked against the Content-Length header, before any downstream
+    # handler or Pydantic model reads the body into memory - a client
+    # claiming a huge body gets rejected without the server ever buffering
+    # it. (A client that lies about Content-Length and streams more than it
+    # declared is a transport-level concern for the ASGI server/proxy in
+    # front of it, not something application middleware can fix.)
+    content_length = request.headers.get("content-length")
+    if content_length is not None:
+        try:
+            if int(content_length) > MAX_BODY_BYTES:
+                return JSONResponse(
+                    status_code=413,
+                    content={"detail": f"Request body too large (max {MAX_BODY_BYTES:,} bytes)."},
+                )
+        except ValueError:
+            pass
+    return await call_next(request)
 
 
 # ── Security response headers ────────────────────────────────────────────────

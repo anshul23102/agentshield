@@ -1,6 +1,8 @@
 """Integration tests for the HTTP/JSON API, driven through the ASGI app directly."""
 import pytest
 
+import main as main_module
+
 
 async def test_status_endpoint_reports_pattern_only_mode(client):
     resp = await client.get("/api/status")
@@ -38,6 +40,23 @@ async def test_inspect_rejects_empty_text(client):
 async def test_inspect_rejects_oversized_text(client):
     resp = await client.post("/api/inspect", json={"text": "a" * 60_000})
     assert resp.status_code == 413
+
+
+async def test_oversized_body_rejected_by_content_length_before_parsing(client, monkeypatch):
+    # Regression guard for the DoS gap: a huge body used to be fully parsed
+    # by Pydantic before the per-field char-length check ever ran. This
+    # middleware rejects it by Content-Length alone. Monkeypatched to a tiny
+    # cap so the test doesn't need to actually send megabytes of data.
+    monkeypatch.setattr(main_module, "MAX_BODY_BYTES", 100)
+    resp = await client.post("/api/inspect", json={"text": "x" * 200})
+    assert resp.status_code == 413
+    assert "too large" in resp.json()["detail"]
+
+
+async def test_body_under_the_cap_is_unaffected(client, monkeypatch):
+    monkeypatch.setattr(main_module, "MAX_BODY_BYTES", 100_000)
+    resp = await client.post("/api/inspect", json={"text": "hello there"})
+    assert resp.status_code == 200
 
 
 async def test_inspect_batch_isolates_failures(client):

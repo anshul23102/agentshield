@@ -14,6 +14,13 @@ services:
         value: 3.11.11
       - key: GITHUB_TOKEN
         sync: false
+      - key: AGENTSHIELD_ALLOWED_ORIGINS
+        # Defaults to "*" in code if unset. CORS matters less here than on a
+        # cookie-authenticated API - this API is header-based (X-API-Key),
+        # which the browser never attaches automatically, so a wildcard can't
+        # be used to silently ride a logged-in user's session from another
+        # site. Still scoped to the real frontend origin as defense-in-depth.
+        value: https://agentshield-three.vercel.app
     plan: free
     # Render's free tier has no persistent disk - local filesystem (including
     # the SQLite DB and the auto-generated admin/API key files) is wiped on

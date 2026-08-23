@@ -4,13 +4,22 @@ const BASE = import.meta.env.VITE_API_URL
   ? `${import.meta.env.VITE_API_URL}/api`
   : '/api'
 
-// The server requires an API key on every inspect/scan/analytics call.
-// This dashboard is a first-party admin console for a self-hosted instance -
-// the person viewing it in a browser IS the operator, so both keys travel in
-// the bundle sent to that browser. Do not deploy this dashboard build
-// somewhere untrusted users can load it; the keys would be visible to them.
+// The server requires an API key on every inspect/scan/analytics call. This
+// dashboard is a first-party console: the person viewing it IS the operator,
+// so the regular key travels in the bundle sent to their browser - that's an
+// accepted tradeoff for a self-hosted or trusted deployment.
+//
+// The ADMIN key is different: it can mint/revoke API keys, wipe all session
+// data, and clear the LLM cache - actions the person loading a *public* URL
+// (e.g. an interview demo link) should never be able to trigger. Gating this
+// behind `import.meta.env.DEV` isn't just a warning - Vite statically inlines
+// DEV as literal `false` in any `vite build` output (what Vercel/Render ship),
+// so `ADMIN_KEY` is `undefined` in every production bundle and the build's
+// minifier dead-code-eliminates the reference entirely - VITE_ADMIN_KEY
+// cannot end up in shipped JS no matter what env vars the hosting platform
+// has configured. It only ever resolves in `npm run dev` on your own machine.
 const API_KEY = import.meta.env.VITE_API_KEY
-const ADMIN_KEY = import.meta.env.VITE_ADMIN_KEY
+const ADMIN_KEY = import.meta.env.DEV ? import.meta.env.VITE_ADMIN_KEY : undefined
 
 export const api = axios.create({
   baseURL: BASE,
@@ -19,6 +28,10 @@ export const api = axios.create({
 })
 
 const adminHeaders = ADMIN_KEY ? { 'X-Admin-Key': ADMIN_KEY } : {}
+
+// Lets the UI hide admin-only controls entirely in production builds instead
+// of showing buttons that would just 401 - see the ADMIN_KEY comment above.
+export const hasAdminAccess = Boolean(ADMIN_KEY)
 
 export const inspect = (text, sessionId, skipLlm = false) =>
   api.post('/inspect', { text, session_id: sessionId, skip_llm: skipLlm }).then(r => r.data)
