@@ -64,9 +64,15 @@ strangers (a portfolio/interview demo, for example), these are not optional:
 3. **Set `AGENTSHIELD_ALLOWED_ORIGINS`** on the backend to your actual
    frontend origin instead of leaving it at the default `*`.
 4. **Rotate the admin key and any LLM provider keys** if you ever suspect a
-   deployment's environment variables were exposed (a misconfigured CI log,
-   a screen-shared terminal, etc.) - both are read fresh from the
-   environment on process start, so a rotation just needs a redeploy.
+   deployment's environment or logs were exposed (a misconfigured CI log, a
+   screen-shared terminal/build log, etc.). LLM provider keys are read fresh
+   from the environment on process start - a rotation there just needs
+   updating the env var and redeploying. The admin key is different: unless
+   you've explicitly set `AGENTSHIELD_ADMIN_KEY`, the app generates a brand
+   new random one on every single process start (see point 5) - so if one
+   was ever visible somewhere it shouldn't have been (a build log, a shared
+   screen), the fastest fix is simply restarting/redeploying the service,
+   which invalidates it immediately.
 5. Free-tier hosts (Render's free web service, for example) wipe the local
    filesystem on every redeploy/cold-restart, which regenerates the admin
    key each time (see `README.md`'s Render section) - don't assume an admin
