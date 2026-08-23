@@ -4,6 +4,7 @@ SQLite with aiosqlite for async prototype-scale persistence.
 """
 
 import json
+import logging
 import os
 import time
 import asyncio
@@ -13,7 +14,10 @@ from typing import Optional
 
 from shield.input_redactor import redact_for_storage
 
-DB_PATH = Path(os.getenv("AGENTSHIELD_DB_PATH") or (Path(__file__).parent.parent / "data" / "agentshield.db"))
+logger = logging.getLogger(__name__)
+
+_DEFAULT_DB_PATH = Path(__file__).parent.parent / "data" / "agentshield.db"
+DB_PATH = Path(os.getenv("AGENTSHIELD_DB_PATH") or _DEFAULT_DB_PATH)
 EVENT_RETENTION_DAYS = int(os.getenv("AGENTSHIELD_EVENT_RETENTION_DAYS", "30"))
 EVENT_CLEANUP_INTERVAL_SECONDS = int(os.getenv("AGENTSHIELD_EVENT_CLEANUP_INTERVAL_SECONDS", "3600"))
 SEED_DEMO_DATA = os.getenv("AGENTSHIELD_SEED_DATA", "false").lower() == "true"
@@ -438,7 +442,28 @@ async def get_db_conn():
 
 
 async def init_db():
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    global DB_PATH
+    # A misconfigured AGENTSHIELD_DB_PATH (pointing at a path this process
+    # can't create/write - e.g. a platform disk-mount path that was set in
+    # the hosting dashboard without the disk actually being attached) used
+    # to crash the entire app on boot. One bad env var taking down the whole
+    # service is worse than falling back to local storage with a loud
+    # warning - so on any OS-level failure here, retry once against the
+    # bundled default path instead of exiting.
+    try:
+        DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        if DB_PATH != _DEFAULT_DB_PATH:
+            logger.warning(
+                "Cannot use AGENTSHIELD_DB_PATH=%s (%s) - falling back to %s. "
+                "Fix or unset AGENTSHIELD_DB_PATH in your hosting platform's "
+                "environment settings.",
+                DB_PATH, exc, _DEFAULT_DB_PATH,
+            )
+            DB_PATH = _DEFAULT_DB_PATH
+            DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+        else:
+            raise
     async with aiosqlite.connect(str(DB_PATH), timeout=30.0) as db:
         await db.execute("PRAGMA journal_mode=WAL")
         await db.execute("PRAGMA synchronous=NORMAL")

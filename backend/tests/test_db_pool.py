@@ -1,6 +1,8 @@
 """Tests for the aiosqlite connection pool. Previously get_db_conn() opened
 and closed a brand-new connection on every single call - these confirm
 connections are actually being reused, not just that queries still work."""
+import os
+
 import pytest
 
 from database.db import init_db, get_db_conn, close_pool, DB_POOL_SIZE
@@ -20,6 +22,24 @@ async def test_pool_reuses_the_same_connection_objects_across_calls():
     # Reused connections mean far fewer distinct objects than total calls,
     # and never more than the pool size.
     assert len(seen_ids) <= DB_POOL_SIZE
+
+
+async def test_init_db_falls_back_to_default_path_when_configured_path_is_unwritable(tmp_path, monkeypatch):
+    # Regression guard for a real production incident: AGENTSHIELD_DB_PATH
+    # pointed at a directory this process couldn't create (a platform disk
+    # mount that was configured without the disk actually attached), and
+    # init_db() crashed the whole app on boot instead of degrading. A locked
+    # directory reproduces the same OSError a real unwritable mount raises.
+    locked_dir = tmp_path / "locked"
+    locked_dir.mkdir()
+    os.chmod(locked_dir, 0o444)
+    bad_path = locked_dir / "nested" / "agentshield.db"
+    monkeypatch.setattr(db_module, "DB_PATH", bad_path)
+    try:
+        await init_db()
+        assert db_module.DB_PATH == db_module._DEFAULT_DB_PATH
+    finally:
+        os.chmod(locked_dir, 0o755)  # tmp_path cleanup needs write access back
 
 
 async def test_pool_connection_is_returned_even_if_the_caller_raises():
