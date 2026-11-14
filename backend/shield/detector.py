@@ -3,6 +3,8 @@ AgentShield Multi-Layer Threat Detector
 4-layer detection pipeline: Pattern → Semantic → LLM → Behavioral
 """
 
+import base64
+import binascii
 import re
 import time
 import asyncio
@@ -140,28 +142,114 @@ def detect_lookalike_chars(text: str) -> bool:
     return bool(confusables.is_dangerous(text))
 
 
+def _letter_from_unicode_name(ch: str) -> Optional[str]:
+    """Unicode names often spell out the letter a character imitates, e.g.
+    'LATIN LETTER SMALL CAPITAL I' or 'CYRILLIC CAPITAL LETTER BYELORUSSIAN-
+    UKRAINIAN I'. Returns that single ASCII letter, or None."""
+    name = unicodedata.name(ch, "")
+    last = name.split()[-1] if name else ""
+    return last if len(last) == 1 and last.isascii() and last.isalpha() else None
+
+
+def _pick_ascii_lookalike(ch: str, candidates: list[str]) -> Optional[str]:
+    """Confusables are many-to-many ('I', 'l' and '1' all look alike), so taking
+    the library's first candidate is unreliable: Cyrillic capital I maps only to
+    lowercase 'l', which turned "Ignore" into "lgnore" and defeated every
+    pattern. Prefer, in order: a Latin-script variant's own letter (small
+    capitals have no candidates at all), a candidate with the same case, then
+    the letter the character's Unicode name spells out, then any candidate."""
+    name_letter = _letter_from_unicode_name(ch)
+    is_upper = ch.isupper()
+    if name_letter and unicodedata.name(ch, "").startswith("LATIN"):
+        return name_letter.upper() if is_upper else name_letter.lower()
+    same_case = [c for c in candidates if c.isalpha() and c.isupper() == is_upper]
+    if same_case:
+        return same_case[0]
+    if name_letter:
+        return name_letter.upper() if is_upper else name_letter.lower()
+    alphabetic = [c for c in candidates if c.isalpha()]
+    return alphabetic[0] if alphabetic else (candidates[0] if candidates else None)
+
+
 def normalize_confusables(text: str) -> str:
     """Maps cross-script confusable characters back to their ASCII look-alike
-    (Cyrillic а -> a, Greek ο -> o, Armenian ա -> w, ...) before pattern
-    matching runs, so a homoglyph-obfuscated attack string still gets caught
-    instead of just flagged after the fact.
+    (Cyrillic а -> a, Greek ο -> o, Armenian ա -> w, small capitals ɪ -> i, ...)
+    before pattern matching runs, so a homoglyph-obfuscated attack string still
+    gets caught instead of just flagged after the fact.
     """
-    findings = confusables.is_confusable(text, preferred_aliases=["latin", "common"], greedy=True)
-    if not findings:
+    replacements: dict[str, str] = {}
+    non_ascii = {c for c in text if ord(c) >= 128}
+    if not non_ascii:
         return text
-    replacements = {}
-    for f in findings:
-        ch = f["character"]
-        if ord(ch) < 128:
-            continue
-        for h in f["homoglyphs"]:
-            candidate = h["c"]
-            if len(candidate) == 1 and ord(candidate) < 128:
-                replacements[ch] = candidate
-                break
+    findings = confusables.is_confusable("".join(non_ascii), preferred_aliases=["latin", "common"], greedy=True) or []
+    candidates_by_char = {
+        f["character"]: [h["c"] for h in f["homoglyphs"] if len(h["c"]) == 1 and ord(h["c"]) < 128]
+        for f in findings
+    }
+    for ch in non_ascii:
+        pick = _pick_ascii_lookalike(ch, candidates_by_char.get(ch, []))
+        if pick:
+            replacements[ch] = pick
     if not replacements:
         return text
     return "".join(replacements.get(c, c) for c in text)
+
+
+# Leetspeak: digits and symbols standing in for letters ("Ign0re all prev1ous").
+# Applied only to a second copy of the text, and only when a token mixes letters
+# with these characters, so ordinary numbers are never rewritten.
+_LEET_MAP = str.maketrans({"0": "o", "3": "e", "4": "a", "5": "s", "7": "t", "@": "a", "$": "s", "8": "b"})
+_LEET_TOKEN_RE = re.compile(r"[A-Za-z][0-9@$][A-Za-z]|[A-Za-z][0-9@$]{1,2}\b")
+
+
+def deleet_variants(text: str) -> list[str]:
+    """Returns de-leeted copies of the text ('1' is ambiguous: it can stand for
+    i or l, so both readings are produced). Empty when no token looks like leet."""
+    if not _LEET_TOKEN_RE.search(text):
+        return []
+    base = text.translate(_LEET_MAP)
+    return [base.replace("1", "i"), base.replace("1", "l")]
+
+
+# Encoded payloads: an attacker hides the instruction in base64 or hex and asks
+# the model to decode it. These are decoded here (bounded) and the DECODED text
+# goes back through the same signatures.
+_B64_RE = re.compile(r"(?<![A-Za-z0-9+/])[A-Za-z0-9+/]{24,512}={0,2}(?![A-Za-z0-9+/=])")
+_HEX_RE = re.compile(r"(?<![0-9A-Fa-f])(?:[0-9A-Fa-f]{2}){12,256}(?![0-9A-Fa-f])")
+MAX_DECODED_PAYLOADS = 6
+
+
+def _printable_ratio(data: bytes) -> float:
+    if not data:
+        return 0.0
+    return sum(1 for b in data if 32 <= b < 127 or b in (9, 10, 13)) / len(data)
+
+
+def decode_embedded_payloads(text: str) -> list[str]:
+    """Finds base64 and hex runs and returns those that decode to mostly
+    printable text. Bounded in count and size so it cannot be used to burn CPU."""
+    decoded: list[str] = []
+    for match in _B64_RE.finditer(text):
+        if len(decoded) >= MAX_DECODED_PAYLOADS:
+            break
+        chunk = match.group(0)
+        chunk += "=" * (-len(chunk) % 4)
+        try:
+            raw = base64.b64decode(chunk, validate=True)
+        except (binascii.Error, ValueError):
+            continue
+        if _printable_ratio(raw) >= 0.9:
+            decoded.append(raw.decode("ascii", errors="ignore"))
+    for match in _HEX_RE.finditer(text):
+        if len(decoded) >= MAX_DECODED_PAYLOADS:
+            break
+        try:
+            raw = bytes.fromhex(match.group(0))
+        except ValueError:
+            continue
+        if _printable_ratio(raw) >= 0.9:
+            decoded.append(raw.decode("ascii", errors="ignore"))
+    return decoded
 
 
 _COLLAPSE_SEPARATORS_RE = re.compile(r"(?<=[A-Za-z0-9])[\s.\-_*]{1,2}(?=[A-Za-z0-9])")
@@ -227,18 +315,37 @@ class ThreatDetector:
         if len(text) > 2000:
             behavioral_flags.append("unusually_long_input")
 
+        # The same signatures also run over decoded and de-leeted copies of the
+        # text, so an instruction hidden in base64/hex ("aWdub3Jl...") or written
+        # "Ign0re all prev1ous" is still recognised.
+        variants = [("text", normalized)]
+        variants += [("decoded", normalize_text(d)) for d in decode_embedded_payloads(normalized)]
+        variants += [("leet", normalize_text(v)) for v in deleet_variants(normalized)]
+
         # Punctuation/spacing evasion check ("i.g.n.o.r.e" -> "ignore"):
         # collapse separators and look for a known attack-intent phrase that
-        # would otherwise slip past every space/period-anchored regex above.
-        collapsed = collapse_spacing_evasion(lower)
-        if any(sig in collapsed for sig in OBFUSCATION_SIGNATURES):
-            behavioral_flags.append("obfuscated_attack_signature_detected")
+        # would otherwise slip past every space/period-anchored regex below.
+        for _source, variant_text in variants:
+            collapsed = collapse_spacing_evasion(variant_text.lower())
+            if any(sig in collapsed for sig in OBFUSCATION_SIGNATURES):
+                behavioral_flags.append("obfuscated_attack_signature_detected")
+                break
 
         # ── Layer 1: Pattern Matching ─────────────────────────────────────────
         layers_executed.append("pattern_matching")
-        for pattern_obj, compiled_re in COMPILED_PATTERNS:
-            match = compiled_re.search(normalized)
-            if match:
+        seen_pattern_ids: set[str] = set()
+        for source, variant_text in variants:
+            for pattern_obj, compiled_re in COMPILED_PATTERNS:
+                if pattern_obj.id in seen_pattern_ids:
+                    continue
+                # A decoded/de-leeted copy exists to expose a hidden instruction,
+                # so the "this looks like base64" signatures are not re-run on it.
+                if source != "text" and pattern_obj.category == ThreatCategory.ENCODING_OBFUSCATION:
+                    continue
+                match = compiled_re.search(variant_text)
+                if not match:
+                    continue
+                seen_pattern_ids.add(pattern_obj.id)
                 pattern_matches.append(PatternMatch(
                     pattern_id=pattern_obj.id,
                     category=pattern_obj.category,
@@ -247,6 +354,10 @@ class ThreatDetector:
                     matched_text=match.group(0),
                     position=match.start(),
                 ))
+                if source == "decoded" and "encoded_attack_payload_detected" not in behavioral_flags:
+                    behavioral_flags.append("encoded_attack_payload_detected")
+                if source == "leet" and "leetspeak_obfuscation_detected" not in behavioral_flags:
+                    behavioral_flags.append("leetspeak_obfuscation_detected")
 
         # Critical pattern → immediate block without LLM call
         critical_matches = [m for m in pattern_matches if m.threat_level == ThreatLevel.CRITICAL]
@@ -362,7 +473,10 @@ class ThreatDetector:
             mitigation = "Sanitize input before passing to agent. Log and monitor this session."
 
         # Primary threat info
-        top_match = pattern_matches[0] if pattern_matches else None
+        # Most severe match wins; pattern_matches is in database order, so
+        # taking [0] could label a CRITICAL hit with a MEDIUM pattern's category.
+        severity_rank = {ThreatLevel.CRITICAL: 0, ThreatLevel.HIGH: 1, ThreatLevel.MEDIUM: 2, ThreatLevel.LOW: 3}
+        top_match = min(pattern_matches, key=lambda m: severity_rank.get(m.threat_level, 4)) if pattern_matches else None
         threat_category = top_match.category.value if top_match else (
             llm_result.threat_type if llm_result and llm_result.is_threat else None
         )

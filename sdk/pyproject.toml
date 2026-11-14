@@ -22,7 +22,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "pytest-asyncio", "respx"]
+dev = ["pytest", "pytest-asyncio"]
 
 [project.urls]
 Homepage = "https://github.com/anshul23102/agentshield"

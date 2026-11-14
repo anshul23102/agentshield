@@ -32,7 +32,12 @@ jobs:
         run: pip install -r requirements-dev.txt
 
       - name: Run tests with coverage
-        run: python -m pytest --cov=shield --cov=database --cov-report=term-missing --cov-fail-under=70
+        run: python -m pytest --cov=shield --cov=database --cov=main --cov-report=term-missing --cov-fail-under=80
+
+      - name: Scan pinned dependencies for known vulnerabilities
+        run: |
+          pip install pip-audit
+          pip-audit -r requirements.lock --no-deps --disable-pip
 
   lockfile-freshness:
     name: requirements.lock is up to date

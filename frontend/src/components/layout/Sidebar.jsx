@@ -1,9 +1,11 @@
+import { useEffect, useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   Shield, LayoutDashboard, Zap, ShieldCheck,
   Brain, BarChart3, BookOpen, Github, Network
 } from 'lucide-react'
+import { useIsDemoSession, getStatus } from '../../utils/api'
 
 const NAV = [
   { to: '/dashboard',    icon: LayoutDashboard, label: 'Dashboard'    },
@@ -15,7 +17,19 @@ const NAV = [
   { to: '/docs',         icon: BookOpen,        label: 'Docs'         },
 ]
 
+// What the backend reports as its Layer 4 provider, in words a visitor recognises.
+const PROVIDER_LABELS = {
+  github_models: ['GitHub Models', 'GPT-4o-mini'],
+  groq: ['Groq', 'gpt-oss-120b'],
+  openrouter: ['OpenRouter', 'Llama 3.1 8B'],
+  pattern_only: ['Pattern layers only', 'no model configured'],
+}
+
 export default function Sidebar() {
+  const isDemo = useIsDemoSession()
+  const [provider, setProvider] = useState(null)
+  useEffect(() => { getStatus().then(s => setProvider(s.llm_provider)).catch(() => {}) }, [])
+  const [providerName, providerModel] = PROVIDER_LABELS[provider] || ['Checking model layer', '']
   return (
     <motion.aside
       initial={{ x: -16, opacity: 0 }}
@@ -93,11 +107,17 @@ export default function Sidebar() {
 
       {/* Footer */}
       <div className="px-6 pb-6" style={{ borderTop: '1px solid rgba(255, 255, 255, 0.08)', paddingTop: 18 }}>
+        {isDemo && (
+          <div style={{ marginBottom: 16, fontSize: 11, lineHeight: 1.5, color: '#9a9aa0', fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+            <span style={{ color: '#4da3ff', fontWeight: 600 }}>Public demo session.</span>{' '}
+            Private to this browser. Your prompts and results are deleted when it expires, about an hour after it started.
+          </div>
+        )}
         <div style={{ fontSize: 10, color: '#7a7a80', letterSpacing: '0.07em', marginBottom: 9, textTransform: 'uppercase', fontWeight: 600, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
-          Powered by
+          Model layer
         </div>
         <div style={{ fontSize: 12, color: '#d1d1d6', fontFamily: '"Plus Jakarta Sans", sans-serif', lineHeight: 1.6, fontWeight: 400 }}>
-          Azure Foundry<br />GitHub Models
+          {providerName}{providerModel && <><br />{providerModel}</>}
         </div>
         <a
           href="https://github.com"

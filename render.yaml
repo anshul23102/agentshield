@@ -14,6 +14,19 @@ services:
         value: 3.11.11
       - key: GITHUB_TOKEN
         sync: false
+      - key: AGENTSHIELD_ENV
+        # Production mode: a generated admin key is never printed or saved, and no
+        # bootstrap key is minted. Hosted log streams are not a safe place for secrets.
+        value: production
+      - key: AGENTSHIELD_PUBLIC_DEMO
+        # Lets anonymous visitors mint a private, one-hour, rate-limited demo key
+        # (POST /api/demo/session) so the public dashboard works without any secret
+        # in its JavaScript. Remove this variable to turn the public demo off.
+        value: "true"
+      - key: AGENTSHIELD_ADMIN_KEY
+        # Optional. Leave unset and the admin API is simply disabled. Set it in the
+        # Render dashboard (never in this file) to enable admin routes.
+        sync: false
       - key: AGENTSHIELD_ALLOWED_ORIGINS
         # Defaults to "*" in code if unset. CORS matters less here than on a
         # cookie-authenticated API - this API is header-based (X-API-Key),

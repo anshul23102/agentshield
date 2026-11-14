@@ -26,6 +26,11 @@ jobs:
         with:
           python-version: "3.11.11"
 
+      - name: Run the SDK tests
+        run: |
+          pip install -e ".[dev]"
+          python -m pytest -q
+
       - name: Build and install the package
         run: |
           pip install build

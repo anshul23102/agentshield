@@ -10,17 +10,17 @@ const FEATURES = [
   {
     icon: Zap,
     title: 'Pattern Matching Guard',
-    desc: '54 compiled regex signatures intercepting exploit vectors in under 1ms.'
+    desc: '54 compiled signatures across 10 attack categories, matched in about a tenth of a millisecond.'
   },
   {
     icon: Brain,
     title: 'Semantic Context Guard',
-    desc: 'Advanced keyword proximity mapping identifying context-poisoning payloads.'
+    desc: '64 weighted keyword signals plus session tracking that catches attacks spread across several turns.'
   },
   {
     icon: ShieldCheck,
     title: 'LLM Reasoning Guard',
-    desc: 'GitHub Models GPT-4o-mini deep analysis returning mitigation reasoning.'
+    desc: 'Optional model analysis through GitHub Models, Groq or OpenRouter, with secrets masked before anything is sent.'
   }
 ]
 
@@ -201,7 +201,7 @@ export default function Landing() {
                 transition={{ delay: 0.6, duration: 0.5 }}
                 className="absolute bottom-16 -right-6 card-flat px-3.5 py-2 max-w-[150px] text-[11px]"
               >
-                <div className="font-semibold text-[#ffffff]">Layer 4: Behavior</div>
+                <div className="font-semibold text-[#ffffff]">Layer 3: Behavior</div>
                 <div className="text-[#D1D1D6] mt-0.5">Detects escalations over multi-turn sessions.</div>
               </motion.div>
             </motion.div>
@@ -232,16 +232,16 @@ export default function Landing() {
 
               <div className="divide-y divide-white/[0.08] glass-elevated px-4">
                 <div className="py-4 flex items-center justify-between text-[13px]">
-                  <span className="font-medium text-[#ffffff]">Prompt Intercept Speed</span>
-                  <span className="text-[#D1D1D6] font-mono">&lt; 1.2ms</span>
+                  <span className="font-medium text-[#ffffff]">Detection latency (pattern layers)</span>
+                  <span className="text-[#D1D1D6] font-mono">0.18 ms p50</span>
                 </div>
                 <div className="py-4 flex items-center justify-between text-[13px]">
-                  <span className="font-medium text-[#ffffff]">PII Redaction Engines</span>
+                  <span className="font-medium text-[#ffffff]">Output leak signatures</span>
                   <span className="text-[#D1D1D6] font-mono">23 Signatures</span>
                 </div>
                 <div className="py-4 flex items-center justify-between text-[13px]">
-                  <span className="font-medium text-[#ffffff]">Free LLM Provider Integration</span>
-                  <span className="text-[#D1D1D6] font-mono">GitHub Models API</span>
+                  <span className="font-medium text-[#ffffff]">Optional LLM providers</span>
+                  <span className="text-[#D1D1D6] font-mono">GitHub Models, Groq, OpenRouter</span>
                 </div>
               </div>
             </motion.div>
@@ -329,14 +329,14 @@ export default function Landing() {
             <div className="space-y-4">
               <h4 className="font-semibold text-[#ffffff]">Organization</h4>
               <div className="flex flex-col gap-2.5">
-                <span className="cursor-not-allowed">About</span>
-                <span className="cursor-not-allowed">Privacy Policy</span>
+                <a href="https://github.com/anshul23102/agentshield/blob/main/SECURITY.md" target="_blank" rel="noreferrer" className="hover:text-[#ffffff] transition-colors">Security Policy</a>
+                <a href="https://github.com/anshul23102/agentshield/blob/main/LICENSE" target="_blank" rel="noreferrer" className="hover:text-[#ffffff] transition-colors">MIT License</a>
               </div>
             </div>
           </div>
           <div className="border-t border-white/[0.06] pt-8 flex flex-col md:flex-row items-center justify-between gap-4">
             <div>
-              &copy; {new Date().getFullYear()} AgentShield Platform. All rights reserved.
+              &copy; {new Date().getFullYear()} AgentShield. Released under the MIT License.
             </div>
             <div className="flex gap-6">
               <span>Built for Microsoft Build AI 2026</span>

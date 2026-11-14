@@ -7,15 +7,19 @@ import {
 import Header from '../components/layout/Header'
 import { useWebSocket } from '../hooks/useWebSocket'
 
+// Order matches ThreatDetector.inspect(): pattern, keyword, session behaviour, then
+// the LLM (which comes last because it is given the session's earlier messages as
+// context). Latencies are measured, not invented: detector benchmark on a laptop,
+// pattern-only mode, short prompts (see docs/evaluation).
 const NODES = [
-  { id: 0, name: 'Client App', role: 'Request Source', icon: Monitor, x: 80, y: 200, desc: 'Initiates user interactions. Dispatches prompts and parameters to the secure agent gateway.' },
-  { id: 1, name: 'Pattern Guard', role: 'Regex Scanner', icon: FileText, x: 220, y: 130, desc: 'Scans inputs against 60+ pre-compiled exploit signatures (Direct Injections, Jailbreak attempts).' },
-  { id: 2, name: 'Semantic Guard', role: 'Heuristic Check', icon: Search, x: 360, y: 270, desc: 'Executes lightweight keyword list taxonomy evaluation and semantic context search to catch obfuscation.' },
-  { id: 3, name: 'LLM Guard', role: 'Deep Analysis', icon: Brain, x: 500, y: 130, desc: 'Leverages high-performance LLM agent logic to run deep safety check analysis on complex prompts.' },
-  { id: 4, name: 'Session Guard', role: 'Behavior Tracker', icon: Activity, x: 640, y: 270, desc: 'Monitors historical prompt patterns, rate limit compliance, and cumulative session threat escalation.' },
-  { id: 5, name: 'Agent Core', role: 'Agent Logic', icon: Cpu, x: 780, y: 200, desc: 'Executes the core enterprise agent loop, including tool execution and Azure model generation.' },
-  { id: 6, name: 'Output Guard', role: 'Leak Protection', icon: EyeOff, x: 920, y: 200, desc: 'Scans outgoing agent responses for credentials, secrets (API keys), and PII, redacting leaks in real time.' },
-  { id: 7, name: 'Safe Response', role: 'Delivery Interface', icon: ShieldCheck, x: 1050, y: 200, desc: 'Transmits sanitized, validated, and redacted output payloads back to the client application.' },
+  { id: 0, name: 'Client App', role: 'Request Source', icon: Monitor, x: 80, y: 200, latency: 'n/a (your application)', runsIn: 'Your application', desc: 'Your application or agent framework. It sends the user prompt to AgentShield through the SDK or the REST API before the prompt reaches the model.' },
+  { id: 1, name: 'Pattern Guard', role: 'Layer 1 - Regex Scanner', icon: FileText, x: 220, y: 130, latency: '~0.1 ms', runsIn: 'In-process, deterministic', desc: 'Normalizes Unicode (NFKC, look-alike characters, spacing tricks) and matches 54 compiled signatures across 10 attack categories, such as instruction overrides and jailbreak personas. A critical match blocks immediately with no model call.' },
+  { id: 2, name: 'Semantic Guard', role: 'Layer 2 - Keyword Check', icon: Search, x: 360, y: 270, latency: '~0.03 ms', runsIn: 'In-process, deterministic', desc: 'Looks for 64 weighted keyword signals in three severity tiers (for example "bypass safety" or "hypothetically"). Cheap, and catches phrasing the regexes do not.' },
+  { id: 3, name: 'Session Guard', role: 'Layer 3 - Behavior Tracker', icon: Activity, x: 500, y: 130, latency: '~0.01 ms in memory (one Redis round trip when REDIS_URL is set)', runsIn: 'In-process, or Redis when configured', desc: 'Remembers each session. Flags a strictly falling trust-score streak that ends in risky territory, a burst of messages in under a minute, and unusually long inputs. This is what catches an attack spread across several innocent-looking turns.' },
+  { id: 4, name: 'LLM Guard', role: 'Layer 4 - Deep Analysis', icon: Brain, x: 640, y: 270, latency: 'provider dependent, typically a few hundred ms (8 s timeout, results cached)', runsIn: 'External provider, fails open on error', desc: 'Sends the prompt (with secrets and PII masked first) to a model through GitHub Models, Groq or OpenRouter for a semantic verdict. Anything it returns is validated and clamped, and if the provider is down the deterministic layers still decide.' },
+  { id: 5, name: 'Agent Core', role: 'Your Agent', icon: Cpu, x: 780, y: 200, latency: 'n/a (depends on your agent)', runsIn: 'Your agent, outside AgentShield', desc: 'Your own agent loop. AgentShield does not run it; it only guards the input going in and the output coming out.' },
+  { id: 6, name: 'Output Guard', role: 'Leak Protection', icon: EyeOff, x: 920, y: 200, latency: '~0.1 ms typical, about 13 ms for 50,000 characters', runsIn: 'In-process, deterministic', desc: 'Scans the agent\'s reply for 23 kinds of leak: cloud and API keys, private keys, JWTs, card numbers (Luhn checked), Aadhaar (Verhoeff checked), IBANs (MOD-97 checked), emails, phone numbers and connection strings. Matches are replaced with placeholders.' },
+  { id: 7, name: 'Safe Response', role: 'Delivery Interface', icon: ShieldCheck, x: 1050, y: 200, latency: 'n/a', runsIn: 'Returned to your application', desc: 'The sanitized reply goes back to the client. Redactions are logged without storing the original secret.' },
 ]
 
 export default function Pipeline() {
@@ -84,14 +88,14 @@ export default function Pipeline() {
     let blockStep = -1
     if (isBlock) {
       if (event.llm_used) {
-        blockStep = 3 // LLM Guard
+        blockStep = 4 // LLM Guard
       } else if (event.pattern_matches && event.pattern_matches.length > 0) {
         blockStep = 1 // Pattern Guard
       } else {
         blockStep = 2 // Semantic Guard
       }
     } else if (isWarn) {
-      blockStep = 4 // Session Guard warns
+      blockStep = 3 // Session Guard warns
     }
     
     const steps = 8
@@ -176,7 +180,7 @@ export default function Pipeline() {
     const steps = 8
     const stepDelays = {
       clean: [250, 250, 250, 250, 250, 350, 250, 250],
-      attack: [250, 250, 250, 300, 0, 0, 0, 0], // Blocked at LLM Guard
+      attack: [250, 250, 250, 250, 300, 0, 0, 0], // Blocked at LLM Guard (step 4)
       leak: [250, 250, 250, 250, 250, 350, 350, 0] // Redacted at Output Guard
     }
     
@@ -196,7 +200,7 @@ export default function Pipeline() {
       
       setNodeStatuses(prev => {
         const next = [...prev]
-        if (type === 'attack' && i === 3) {
+        if (type === 'attack' && i === 4) {
           next[i] = 'failed'
           return next
         }
@@ -208,7 +212,7 @@ export default function Pipeline() {
         return next
       })
       
-      if (type === 'attack' && i === 3) {
+      if (type === 'attack' && i === 4) {
         addLiveLog(`Request blocked at LLM Guard (Adversarial pattern detected).`, 'error', 'sim')
         break
       }
@@ -560,21 +564,15 @@ export default function Pipeline() {
 
                       <div className="space-y-4">
                         <div>
-                          <div className="text-[10px] text-[#86868b] tracking-wider uppercase font-bold">Latency Overhead</div>
+                          <div className="text-[10px] text-[#86868b] tracking-wider uppercase font-bold">Typical latency (measured)</div>
                           <div className="text-sm font-semibold text-[#f5f5f7] mt-1 font-mono">
-                            {selectedNode === 0 || selectedNode === 7 ? '0 ms (Pass)' : 
-                             selectedNode === 1 ? '1.5 ms' :
-                             selectedNode === 2 ? '11.8 ms' :
-                             selectedNode === 3 ? '184 ms (LLM)' :
-                             selectedNode === 4 ? '1.2 ms' :
-                             selectedNode === 5 ? '420 ms (Azure OpenAI)' :
-                             '8.2 ms'}
+                            {NODES[selectedNode].latency}
                           </div>
                         </div>
 
                         <div>
-                          <div className="text-[10px] text-[#86868b] tracking-wider uppercase font-bold">Throughput Capacity</div>
-                          <div className="text-sm font-semibold text-[#30d158] mt-1 font-mono">100% Operational</div>
+                          <div className="text-[10px] text-[#86868b] tracking-wider uppercase font-bold">Where it runs</div>
+                          <div className="text-sm font-semibold text-[#4da3ff] mt-1 font-mono">{NODES[selectedNode].runsIn}</div>
                         </div>
 
                         <div>

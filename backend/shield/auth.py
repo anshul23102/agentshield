@@ -16,6 +16,7 @@ Design notes:
 import hashlib
 import os
 import secrets
+import time
 from dataclasses import dataclass
 from typing import Optional
 
@@ -31,6 +32,7 @@ _PEPPER = os.getenv("AGENTSHIELD_KEY_PEPPER", "")
 class ApiKeyRecord:
     id: str
     label: Optional[str]
+    kind: str = "standard"  # "standard" (issued by an admin) or "demo" (ephemeral, public demo mode)
 
 
 def _hash_key(raw_key: str) -> str:
@@ -43,11 +45,14 @@ def generate_key_id() -> str:
     return "ak_" + secrets.token_hex(8)
 
 
-async def create_api_key(label: Optional[str] = None) -> tuple[str, str]:
-    """Creates a new key, returns (key_id, raw_key). raw_key is shown exactly once."""
+async def create_api_key(label: Optional[str] = None, kind: str = "standard",
+                         ttl_seconds: Optional[float] = None) -> tuple[str, str]:
+    """Creates a new key, returns (key_id, raw_key). raw_key is shown exactly once.
+    A ttl_seconds makes the key expire on its own (used for public demo keys)."""
     key_id = generate_key_id()
     raw_key = KEY_PREFIX + secrets.token_urlsafe(32)
-    await insert_api_key(key_id, _hash_key(raw_key), label)
+    expires_at = time.time() + ttl_seconds if ttl_seconds else None
+    await insert_api_key(key_id, _hash_key(raw_key), label, kind=kind, expires_at=expires_at)
     return key_id, raw_key
 
 
@@ -61,7 +66,7 @@ async def verify_api_key(raw_key: str) -> Optional[ApiKeyRecord]:
     record = await get_api_key_by_hash(_hash_key(raw_key))
     if not record:
         return None
-    return ApiKeyRecord(id=record["id"], label=record.get("label"))
+    return ApiKeyRecord(id=record["id"], label=record.get("label"), kind=record.get("kind") or "standard")
 
 
 def _extract_raw_key(x_api_key: Optional[str], authorization: Optional[str]) -> Optional[str]:

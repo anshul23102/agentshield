@@ -30,6 +30,10 @@ BEHAVIORAL_DEDUCTIONS = {
     # this is a precise signal (near-zero false-positive rate by construction,
     # see OBFUSCATION_SIGNATURES), so it's weighted close to a HIGH pattern hit.
     "obfuscated_attack_signature_detected": 45,
+    # The instruction was hidden in base64/hex or written in leetspeak and only
+    # became recognisable after decoding: concealment is itself the signal.
+    "encoded_attack_payload_detected": 30,
+    "leetspeak_obfuscation_detected": 20,
 }
 
 LLM_SEVERITY_DEDUCTIONS = {

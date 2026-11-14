@@ -46,7 +46,7 @@ export default function Analytics() {
   const avgScore = t.avg_score ? Math.round(t.avg_score) : 100
   const blockRate= total > 0 ? ((blocked / total) * 100).toFixed(1) : 0
 
-  const daily    = (data?.daily_trend || []).reverse()
+  const daily    = [...(data?.daily_trend || [])].reverse() // copy: reverse() mutates state in place on every render
   const cats     = (data?.categories  || []).filter(c => c.threat_category).slice(0, 7)
   const patterns = data?.top_patterns || []
   const hourly   = Array.from({ length: 24 }, (_, h) => ({ hour: `${h}h`, count: 0 }))

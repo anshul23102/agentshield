@@ -78,3 +78,17 @@ strangers (a portfolio/interview demo, for example), these are not optional:
    key each time (see `README.md`'s Render section) - don't assume an admin
    key from a previous deploy is still valid, and don't rely on the
    filesystem being a secrets store even locally.
+
+## Public demo mode: what it allows and what it does not
+
+`AGENTSHIELD_PUBLIC_DEMO=true` lets anyone call `POST /api/demo/session` and receive a demo API key. Treat that as a deliberate, bounded exposure.
+
+What a demo key can do: inspect prompts, scan outputs and read analytics for its own session, at 30 requests a minute, for one hour. Each key is its own tenant, so it cannot read anyone else's events, and its events are deleted when it expires.
+
+What it cannot do: reach any `/api/admin/*` route (those need a separate admin key), mint other keys, or exceed the shared hourly budget of LLM calls.
+
+Remaining abuse paths, accepted for a free demo: someone can mint keys up to the global rate (20 a minute) and the active-key cap (300) and so crowd out other visitors; real tenants with standard keys are not affected. Per-IP minting limits only apply when `AGENTSHIELD_TRUSTED_PROXY_COUNT` is set correctly, since behind a proxy every visitor otherwise shares one address. A CAPTCHA or proof-of-work step would be the next hardening.
+
+## Production mode
+
+`AGENTSHIELD_ENV=production` stops the process from printing or saving any secret it generated itself. With no `AGENTSHIELD_ADMIN_KEY` set, the admin API is disabled rather than given a key that appears in a log. Set the key as a secret environment variable to enable it.

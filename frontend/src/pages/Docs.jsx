@@ -109,7 +109,7 @@ return scan.redacted_text   # secrets automatically masked`} />
 
           <Section title="Multi-Turn Session Tracking" delay={0.1}>
             <p style={{ fontSize: 13, color: '#86868b', lineHeight: 1.7, fontFamily: '"Plus Jakarta Sans", sans-serif', fontWeight: 300 }}>
-              Session context enables Layer 4 behavioral analysis, detecting escalating
+              Session context enables Layer 3 behavioral analysis, detecting escalating
               multi-step attacks that look innocent one turn at a time.
             </p>
             <Code lang="python" code={`from agentshield_sdk import AgentShield, ShieldedSession
@@ -130,7 +130,7 @@ with ShieldedSession(shield, session_id="user-123") as sess:
           <Section title="REST API Reference" delay={0.15}>
             <div className="row-list">
               {[
-                { method: 'POST', path: '/api/inspect',      color: '#0071e3', desc: 'Inspect a prompt with full 4-layer input detection' },
+                { method: 'POST', path: '/api/inspect',      color: '#0071e3', desc: 'Inspect a prompt through all four detection layers' },
                 { method: 'POST', path: '/api/inspect/batch',color: '#0071e3', desc: 'Batch inspect up to 50 prompts (parallel async)' },
                 { method: 'POST', path: '/api/scan/output',  color: '#30d158', desc: 'Scan agent output with 23 data-leak signatures plus redaction' },
                 { method: 'GET',  path: '/api/analytics',    color: '#ff9f0a', desc: 'Full analytics: totals, categories, daily trend, hourly' },
@@ -154,10 +154,10 @@ with ShieldedSession(shield, session_id="user-123") as sess:
           <Section title="Detection Architecture" delay={0.2}>
             <div className="row-list">
               {[
-                { n: 1, title: 'Pattern Matching', time: '<1ms',   color: '#ff453a', desc: '54 compiled regex signatures across 10 categories. Critical patterns block immediately, no API call needed.' },
-                { n: 2, title: 'Keyword Semantic', time: '~1ms',   color: '#ff9f0a', desc: '40+ keyword signals in 3 tiers (critical/high/medium). Runs entirely in-process.' },
-                { n: 3, title: 'LLM Deep Analysis',time: '~500ms', color: '#0071e3', desc: 'An OpenAI-compatible provider (GitHub Models, Groq, or OpenRouter, whichever key is configured) performs contextual threat analysis with reasoning and mitigation advice.' },
-                { n: 4, title: 'Behavioral Analysis',time: 'parallel',color:'#30d158',desc: 'Session-aware tracking detects multi-turn escalation, high message rates, and gradual context poisoning.' },
+                { n: 1, title: 'Pattern Matching', time: '~0.1ms',   color: '#ff453a', desc: '54 compiled regex signatures across 10 categories, after Unicode and spacing normalization. A critical match blocks immediately, with no model call.' },
+                { n: 2, title: 'Keyword Semantic', time: '~0.03ms',   color: '#ff9f0a', desc: '64 weighted keyword signals in three severity tiers (critical, high, medium). Runs entirely in-process.' },
+                { n: 3, title: 'Behavioral Analysis',time: '~0.01ms',color:'#30d158',desc: 'Session-aware tracking catches multi-turn escalation (a falling trust-score streak), message bursts and oversized inputs. In-memory, or Redis when REDIS_URL is set.' },
+                { n: 4, title: 'LLM Deep Analysis',time: 'provider dependent', color: '#0071e3', desc: 'GitHub Models, Groq or OpenRouter (whichever key is configured) gives a semantic verdict with reasoning. Secrets and PII are masked before anything is sent, the reply is validated and clamped, and if the provider fails the deterministic layers still decide.' },
               ].map(l => (
                 <div key={l.n} className="row-item" style={{ alignItems: 'flex-start', gap: 16 }}>
                   <div style={{ width: 32, height: 32, borderRadius: 8, background: `${l.color}10`, border: `1px solid ${l.color}25`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontFamily: '"Outfit", "-apple-system", sans-serif', fontWeight: 600, fontSize: 14, color: l.color }}>

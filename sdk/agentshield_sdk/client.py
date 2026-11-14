@@ -25,9 +25,14 @@ class ShieldResult:
     behavioral_flags: list
     session_id: str
     raw: dict
+    # True when the AgentShield server could not be reached and the client was
+    # configured with fail_open=True. The text was NOT inspected; log this.
+    degraded: bool = False
 
     @property
     def is_safe(self) -> bool:
+        """True only for an "allow" verdict. A "warn" is not safe: it means the
+        prompt scored in the suspicious band, and the caller decides what to do."""
         return self.action == "allow"
 
     @property
@@ -39,8 +44,8 @@ class ShieldResult:
         return self.action == "warn"
 
     def __str__(self):
-        icon = {"block": "🛑", "warn": "⚠️", "allow": "✅"}.get(self.action, "?")
-        return f"{icon} [{self.action.upper()}] Score={self.trust_score}/100 | {self.reasoning[:80]}"
+        note = " (NOT INSPECTED: server unreachable)" if self.degraded else ""
+        return f"[{self.action.upper()}] Score={self.trust_score}/100 | {self.reasoning[:80]}{note}"
 
 
 @dataclass
@@ -53,10 +58,11 @@ class OutputScanResult:
     leak_summary: dict
     reasoning: str
     raw: dict
+    degraded: bool = False
 
     def __str__(self):
-        icon = "✅" if self.is_safe else "🛑"
-        return f"{icon} [{self.action.upper()}] Safety={self.risk_score}/100 | {len(self.leaks_found)} leak(s)"
+        note = " (NOT SCANNED: server unreachable)" if self.degraded else ""
+        return f"[{self.action.upper()}] Safety={self.risk_score}/100 | {len(self.leaks_found)} leak(s){note}"
 
 
 class AgentShield:
@@ -72,6 +78,15 @@ class AgentShield:
     The server requires an API key on every inspect/scan/analytics call. Pass
     one explicitly, or set the AGENTSHIELD_API_KEY environment variable - issue
     one with `python scripts/create_api_key.py "label"` on the server.
+
+    What happens when AgentShield itself is down? That is a real policy choice,
+    so it is explicit:
+      * fail_open=False (default, "fail closed"): network and HTTP errors are
+        raised to the caller, so an agent never runs on an uninspected prompt by
+        accident. Safer; an outage becomes an exception you must handle.
+      * fail_open=True: the call returns an "allow" result flagged
+        degraded=True and the agent keeps working, uninspected. More available;
+        you accept that attacks pass during an outage. Log result.degraded.
     """
 
     def __init__(
@@ -80,14 +95,42 @@ class AgentShield:
         api_key: Optional[str] = None,
         timeout: float = 15.0,
         default_session_id: Optional[str] = None,
+        fail_open: bool = False,
+        transport=None,
     ):
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key or os.getenv("AGENTSHIELD_API_KEY")
         self.timeout = timeout
         self.default_session_id = default_session_id
+        self.fail_open = fail_open
         headers = {"X-API-Key": self.api_key} if self.api_key else {}
-        self._client = httpx.Client(base_url=self.base_url, timeout=timeout, headers=headers)
-        self._async_client = httpx.AsyncClient(base_url=self.base_url, timeout=timeout, headers=headers)
+        # `transport` exists for tests (httpx.MockTransport) and custom networking.
+        extra = {"transport": transport} if transport is not None else {}
+        self._client = httpx.Client(base_url=self.base_url, timeout=timeout, headers=headers, **extra)
+        self._async_client = httpx.AsyncClient(base_url=self.base_url, timeout=timeout, headers=headers, **extra)
+
+    # ── failure policy ────────────────────────────────────────────────────────
+
+    def _degraded_inspect(self, exc: Exception) -> "ShieldResult":
+        if not self.fail_open:
+            raise exc
+        return ShieldResult(
+            action="allow", trust_score=0, threat_detected=False, threat_category=None, threat_level=None,
+            reasoning=f"AgentShield unreachable ({type(exc).__name__}); failing open. The prompt was NOT inspected.",
+            mitigation="", processing_time_ms=0.0, pattern_matches=[], llm_analysis=None,
+            behavioral_flags=["agentshield_unreachable"], session_id="", raw={"error": str(exc)}, degraded=True,
+        )
+
+    def _degraded_scan(self, exc: Exception, text: str) -> "OutputScanResult":
+        if not self.fail_open:
+            raise exc
+        return OutputScanResult(
+            is_safe=True, action="allow", risk_score=0, leaks_found=[], redacted_text=text, leak_summary={},
+            reasoning=f"AgentShield unreachable ({type(exc).__name__}); failing open. The output was NOT scanned.",
+            raw={"error": str(exc)}, degraded=True,
+        )
+
+    # ── input inspection ──────────────────────────────────────────────────────
 
     def inspect(
         self,
@@ -101,8 +144,11 @@ class AgentShield:
             "session_id": session_id or self.default_session_id,
             "skip_llm": skip_llm,
         }
-        resp = self._client.post("/api/inspect", json=payload)
-        resp.raise_for_status()
+        try:
+            resp = self._client.post("/api/inspect", json=payload)
+            resp.raise_for_status()
+        except httpx.HTTPError as exc:
+            return self._degraded_inspect(exc)
         return self._parse(resp.json())
 
     async def ainspect(
@@ -117,8 +163,11 @@ class AgentShield:
             "session_id": session_id or self.default_session_id,
             "skip_llm": skip_llm,
         }
-        resp = await self._async_client.post("/api/inspect", json=payload)
-        resp.raise_for_status()
+        try:
+            resp = await self._async_client.post("/api/inspect", json=payload)
+            resp.raise_for_status()
+        except httpx.HTTPError as exc:
+            return self._degraded_inspect(exc)
         return self._parse(resp.json())
 
     def inspect_batch(self, texts: list[str], skip_llm: bool = False) -> list[ShieldResult]:
@@ -126,31 +175,57 @@ class AgentShield:
         payload = {
             "items": [{"text": t, "skip_llm": skip_llm} for t in texts]
         }
-        resp = self._client.post("/api/inspect/batch", json=payload)
-        resp.raise_for_status()
+        try:
+            resp = self._client.post("/api/inspect/batch", json=payload)
+            resp.raise_for_status()
+        except httpx.HTTPError as exc:
+            return [self._degraded_inspect(exc) for _ in texts]
         return [self._parse(r) for r in resp.json()]
 
-    def scan_output(self, text: str, redact: bool = True) -> "OutputScanResult":
+    # ── output scanning ───────────────────────────────────────────────────────
+
+    def scan_output(self, text: str, redact: bool = True, session_id: Optional[str] = None) -> "OutputScanResult":
         """
         Bidirectional protection: scan an AGENT OUTPUT for leaked secrets,
         PII, and financial data before transmitting it to the user.
         """
-        resp = self._client.post("/api/scan/output", json={"text": text, "redact": redact})
+        payload = {"text": text, "redact": redact, "session_id": session_id or self.default_session_id}
+        try:
+            resp = self._client.post("/api/scan/output", json=payload)
+            resp.raise_for_status()
+        except httpx.HTTPError as exc:
+            return self._degraded_scan(exc, text)
+        return self._parse_scan(resp.json(), text)
+
+    async def ascan_output(self, text: str, redact: bool = True, session_id: Optional[str] = None) -> "OutputScanResult":
+        """Async counterpart of scan_output."""
+        payload = {"text": text, "redact": redact, "session_id": session_id or self.default_session_id}
+        try:
+            resp = await self._async_client.post("/api/scan/output", json=payload)
+            resp.raise_for_status()
+        except httpx.HTTPError as exc:
+            return self._degraded_scan(exc, text)
+        return self._parse_scan(resp.json(), text)
+
+    def status(self) -> dict:
+        resp = self._client.get("/api/status")
         resp.raise_for_status()
-        d = resp.json()
+        return resp.json()
+
+    # ── parsing ───────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _parse_scan(d: dict, original_text: str) -> "OutputScanResult":
         return OutputScanResult(
             is_safe=d.get("is_safe", True),
             action=d.get("action", "allow"),
             risk_score=d.get("risk_score", 100),
             leaks_found=d.get("leaks_found", []),
-            redacted_text=d.get("redacted_text", text),
+            redacted_text=d.get("redacted_text", original_text),
             leak_summary=d.get("leak_summary", {}),
             reasoning=d.get("reasoning", ""),
             raw=d,
         )
-
-    def status(self) -> dict:
-        return self._client.get("/api/status").json()
 
     @staticmethod
     def _parse(data: dict) -> ShieldResult:
@@ -170,11 +245,28 @@ class AgentShield:
             raw=data,
         )
 
+    # ── lifecycle ─────────────────────────────────────────────────────────────
+
+    def close(self):
+        self._client.close()
+
+    async def aclose(self):
+        """Close the async client too. It used to be left open forever, which
+        leaks sockets and triggers 'unclosed client' warnings."""
+        await self._async_client.aclose()
+        self._client.close()
+
     def __enter__(self):
         return self
 
     def __exit__(self, *_):
-        self._client.close()
+        self.close()
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_):
+        await self.aclose()
 
 
 class ShieldedSession:

@@ -162,8 +162,17 @@ LEAK_PATTERNS: list[LeakPattern] = [
         redact_with="[SSN_REDACTED]",
     ),
     LeakPattern(
+        # Every quantifier here is bounded on purpose. The previous form,
+        # \b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b, was a quadratic
+        # ReDoS: on a long run of local-part characters with no "@" (for
+        # example "a.a.a.a..."), the engine retried from every start position
+        # and scanned to the end of the run each time. 50,000 characters took
+        # about 9 seconds, and because `re` holds the GIL inside an async
+        # handler, one request froze the whole service. Real addresses are
+        # capped by RFC 5321 (64 local part, 63 per domain label), so these
+        # bounds cost nothing in accuracy and make matching linear.
         id="PII-EMAIL",
-        pattern=r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b",
+        pattern=r"[A-Za-z0-9._%+-]{1,64}@(?:[A-Za-z0-9-]{1,63}\.){1,8}[A-Za-z]{2,24}\b",
         leak_type=LeakType.PII, severity=LeakSeverity.MEDIUM,
         description="Email Address",
         redact_with="[EMAIL_REDACTED]",
@@ -485,7 +494,10 @@ class OutputGuard:
             seen_spans.append(span)
             accepted.append((lp, span, matched))
 
-            preview = matched[:6] + "***" if len(matched) > 6 else "***"
+            # Four characters is enough to recognise a key prefix (AKIA, ghp_,
+            # sk-) without echoing the start of a real password or ID number
+            # back into API responses, broadcasts and logs.
+            preview = matched[:4] + "***" if len(matched) > 8 else "***"
             leaks.append(LeakMatch(
                 pattern_id=lp.id,
                 leak_type=lp.leak_type.value,

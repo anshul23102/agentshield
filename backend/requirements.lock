@@ -2,51 +2,55 @@
 #    uv pip compile requirements.txt -o requirements.lock --python-version 3.11
 aiosqlite==0.20.0
     # via -r requirements.txt
-annotated-doc==0.0.5
-    # via typer
+annotated-doc==0.0.6
+    # via
+    #   fastapi
+    #   typer
 annotated-types==0.8.0
     # via pydantic
-anyio==4.14.2
+anyio==4.16.0
     # via
+    #   fastapi
     #   httpx
     #   openai
     #   starlette
     #   watchfiles
 async-timeout==5.0.1
     # via redis
-blis==1.3.3
+blis==1.3.4
     # via thinc
 catalogue==2.0.10
     # via
     #   spacy
     #   srsly
     #   thinc
-certifi==2026.7.22
+certifi==2026.10.23
     # via
     #   httpcore
     #   httpx
     #   requests
 cffi==2.1.1
     # via cryptography
-charset-normalizer==3.5.1
+charset-normalizer==3.5.2
     # via requests
-click==8.4.2
+click==8.5.1
     # via
     #   presidio-analyzer
     #   spacy
     #   uvicorn
-cloudpathlib==0.24.0
+    #   weasel
+cloudpathlib==0.26.0
     # via weasel
-confection==1.3.3
+confection==1.3.4
     # via
     #   spacy
     #   thinc
     #   weasel
 confusable-homoglyphs==3.3.1
     # via -r requirements.txt
-cryptography==48.0.1
+cryptography==50.0.2
     # via presidio-anonymizer
-cymem==2.0.13
+cymem==2.0.16
     # via
     #   preshed
     #   spacy
@@ -57,9 +61,9 @@ distro==1.9.0
     # via openai
 en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
     # via -r requirements.txt
-fastapi==0.115.5
+fastapi==0.162.7
     # via -r requirements.txt
-filelock==3.32.3
+filelock==4.2.10
     # via tldextract
 h11==0.16.0
     # via
@@ -67,13 +71,13 @@ h11==0.16.0
     #   uvicorn
 httpcore==1.0.9
     # via httpx
-httptools==0.8.0
+httptools==0.9.0
     # via uvicorn
 httpx==0.28.1
     # via
     #   openai
     #   weasel
-idna==3.19
+idna==3.20
     # via
     #   anyio
     #   httpx
@@ -83,17 +87,17 @@ jinja2==3.1.6
     # via
     #   -r requirements.txt
     #   spacy
-jiter==0.16.0
+jiter==0.19.0
     # via openai
 limits==5.8.0
     # via -r requirements.txt
-markdown-it-py==4.2.0
+markdown-it-py==4.3.0
     # via rich
-markupsafe==3.0.3
+markupsafe==3.0.4
     # via jinja2
 mdurl==0.1.2
     # via markdown-it-py
-murmurhash==1.0.15
+murmurhash==1.0.16
     # via
     #   preshed
     #   spacy
@@ -106,6 +110,8 @@ numpy==2.4.6
     #   thinc
 openai==1.55.3
     # via -r requirements.txt
+opentelemetry-api==1.45.2
+    # via fastapi
 packaging==26.3
     # via
     #   limits
@@ -118,13 +124,14 @@ phonenumbers==9.0.37
     #   presidio-analyzer
 preshed==3.0.13
     # via
+    #   presidio-analyzer
     #   spacy
     #   thinc
-presidio-analyzer==2.2.364
+presidio-analyzer==2.2.366
     # via -r requirements.txt
-presidio-anonymizer==2.2.364
+presidio-anonymizer==2.2.366
     # via -r requirements.txt
-pycparser==3.0
+pycparser==3.12
     # via cffi
 pydantic==2.13.4
     # via
@@ -134,12 +141,13 @@ pydantic==2.13.4
     #   presidio-analyzer
     #   spacy
     #   thinc
+    #   typer
     #   weasel
 pydantic-core==2.46.4
     # via pydantic
 pygments==2.21.0
     # via rich
-python-dotenv==1.0.1
+python-dotenv==1.2.4
     # via
     #   -r requirements.txt
     #   uvicorn
@@ -151,24 +159,25 @@ redis==7.4.1
     # via
     #   -r requirements.txt
     #   limits
-regex==2026.7.19
+regex==2026.11.9
     # via presidio-analyzer
 requests==2.34.2
     # via
     #   requests-file
+    #   smart-open
     #   spacy
     #   tldextract
 requests-file==3.0.1
     # via tldextract
 rich==15.0.0
     # via typer
-setuptools==84.0.0
+setuptools==84.2.1
     # via
     #   spacy
     #   thinc
 shellingham==1.5.4
     # via typer
-smart-open==8.0.1
+smart-open==9.0.3
     # via weasel
 sniffio==1.3.1
     # via openai
@@ -180,22 +189,22 @@ spacy-legacy==3.0.12
     # via spacy
 spacy-loggers==1.0.5
     # via spacy
-srsly==2.5.3
+srsly==2.5.6
     # via
     #   spacy
     #   thinc
     #   weasel
-starlette==0.41.3
+starlette==1.10.0
     # via fastapi
-thinc==8.3.13
+thinc==8.3.14
     # via spacy
-tldextract==5.3.2
+tldextract==5.4.0
     # via presidio-analyzer
-tqdm==4.70.0
+tqdm==4.70.1
     # via
     #   openai
     #   spacy
-typer==0.27.1
+typer==0.29.1
     # via
     #   spacy
     #   weasel
@@ -206,31 +215,35 @@ typing-extensions==4.16.0
     #   fastapi
     #   limits
     #   openai
+    #   opentelemetry-api
     #   pydantic
     #   pydantic-core
+    #   starlette
     #   typing-inspection
-typing-inspection==0.4.4
-    # via pydantic
-urllib3==2.7.0
+typing-inspection==0.4.5
+    # via
+    #   fastapi
+    #   pydantic
+urllib3==2.8.0
     # via requests
 uvicorn==0.32.1
     # via -r requirements.txt
-uvloop==0.22.1
+uvloop==0.23.0
     # via uvicorn
 wasabi==1.1.3
     # via
     #   spacy
     #   thinc
     #   weasel
-watchfiles==1.2.0
+watchfiles==1.3.0
     # via uvicorn
-weasel==1.0.0
+weasel==1.0.1
     # via spacy
 websockets==13.1
     # via
     #   -r requirements.txt
     #   uvicorn
-wrapt==2.3.0
+wrapt==2.5.2
     # via
     #   deprecated
     #   smart-open

@@ -69,6 +69,7 @@ class InMemorySessionStore:
         self._sessions: dict[str, SessionContext] = {}
         self._max_sessions = max_sessions
         self._session_ttl = session_ttl
+        self._last_sweep = 0.0
 
     async def get_or_create(self, session_id: str) -> SessionContext:
         self._evict_expired()
@@ -113,14 +114,21 @@ class InMemorySessionStore:
     async def reset_all(self):
         self._sessions.clear()
 
+    SWEEP_INTERVAL_SECONDS = 30
+
     def _evict_expired(self):
         now = time.time()
-        expired = [
-            sid for sid, ctx in self._sessions.items()
-            if (now - ctx.last_activity) > self._session_ttl
-        ]
-        for sid in expired:
-            del self._sessions[sid]
+        # The TTL sweep walks every session, and this runs on every request.
+        # Expiry is measured in minutes, so sweeping at most every 30 seconds
+        # loses nothing and removes an O(n) scan from the hot path.
+        if now - self._last_sweep >= self.SWEEP_INTERVAL_SECONDS:
+            self._last_sweep = now
+            expired = [
+                sid for sid, ctx in self._sessions.items()
+                if (now - ctx.last_activity) > self._session_ttl
+            ]
+            for sid in expired:
+                del self._sessions[sid]
         # LRU eviction if at capacity
         if len(self._sessions) >= self._max_sessions:
             oldest = sorted(self._sessions.items(), key=lambda x: x[1].last_activity)

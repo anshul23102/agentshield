@@ -80,7 +80,7 @@ export default function Simulator() {
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
-      <Header title="Simulator" subtitle="Test any prompt through the 4-layer detection pipeline" />
+      <Header title="Simulator" subtitle="Test any prompt through the four-layer detection pipeline" />
 
       <div className="flex-1 overflow-hidden">
         <div className="max-w-[1200px] mx-auto h-full flex divide-x divide-[rgba(0,0,0,0.06)] px-4">
@@ -96,9 +96,9 @@ export default function Simulator() {
               >
                 <span className="font-semibold text-white">Sequential Protection Pipeline:</span> Prompts traverse 
                 <strong> Pattern Matching</strong> ➔ 
-                <strong> Semantic Heuristics</strong> ➔ 
-                <strong> LLM Analysis</strong> ➔ 
-                <strong> Session Guard</strong>.
+                <strong> Keyword Heuristics</strong> ➔ 
+                <strong> Session Behavior</strong> ➔ 
+                <strong> LLM Analysis</strong>.
               </div>
 
               {/* Demo chips */}
@@ -210,7 +210,7 @@ export default function Simulator() {
                     <div style={{ textAlign: 'center' }}>
                       <div style={{ fontSize: 14, color: '#f5f5f7', fontWeight: 500, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>Executing Pipeline Guard</div>
                       <div style={{ fontSize: 11, color: '#86868b', fontFamily: '"Plus Jakarta Sans", sans-serif', marginTop: 6, fontWeight: 300 }}>
-                        Pattern ➔ Semantic ➔ LLM ➔ Behavioral
+                        Pattern ➔ Keyword ➔ Behavioral ➔ LLM
                       </div>
                     </div>
                   </motion.div>

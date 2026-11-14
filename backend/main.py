@@ -20,7 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
 from shield import ThreatDetector
@@ -31,7 +31,7 @@ from shield import shared_state
 from database.db import (
     log_event, get_recent_events, get_analytics, init_db, close_pool, get_db_conn,
     purge_expired_events, EVENT_RETENTION_DAYS, EVENT_CLEANUP_INTERVAL_SECONDS,
-    list_api_keys, revoke_api_key,
+    list_api_keys, revoke_api_key, count_active_demo_keys, purge_expired_demo_keys,
 )
 
 # ── Global state ─────────────────────────────────────────────────────────────
@@ -76,6 +76,26 @@ MAX_WS_CLIENTS_PER_TENANT = int(os.getenv("AGENTSHIELD_MAX_WS_CLIENTS_PER_TENANT
 RATE_LIMIT_PER_MINUTE = int(os.getenv("AGENTSHIELD_RATE_LIMIT_PER_MINUTE", "120"))
 ALLOWED_ORIGINS = [o.strip() for o in os.getenv("AGENTSHIELD_ALLOWED_ORIGINS", "*").split(",")]
 
+# "production" changes exactly one behaviour that matters for security: the
+# process never prints or persists a secret it generated itself (see
+# _load_or_create_admin_key and _ensure_bootstrap_api_key). A hosted log
+# stream is not a safe place for an admin key.
+IS_PRODUCTION = os.getenv("AGENTSHIELD_ENV", "development").lower() == "production"
+
+# Public demo mode (off by default). When on, anyone can mint a short-lived,
+# tightly rate-limited key through POST /api/demo/session, so a public site can
+# be interactive without shipping any real secret in its JavaScript. Every demo
+# key is its own tenant: visitors never see each other's data.
+PUBLIC_DEMO = os.getenv("AGENTSHIELD_PUBLIC_DEMO", "false").lower() == "true"
+DEMO_KEY_TTL_SECONDS = int(os.getenv("AGENTSHIELD_DEMO_KEY_TTL_SECONDS", "3600"))
+DEMO_RATE_LIMIT_PER_MINUTE = int(os.getenv("AGENTSHIELD_DEMO_RATE_LIMIT_PER_MINUTE", "30"))
+DEMO_MAX_ACTIVE_KEYS = int(os.getenv("AGENTSHIELD_DEMO_MAX_ACTIVE_KEYS", "300"))
+DEMO_MINT_PER_MINUTE = int(os.getenv("AGENTSHIELD_DEMO_MINT_PER_MINUTE", "20"))
+DEMO_MINT_PER_IP_PER_HOUR = int(os.getenv("AGENTSHIELD_DEMO_MINT_PER_IP_PER_HOUR", "10"))
+# Shared ceiling on LLM calls made on behalf of ALL demo visitors combined, so
+# a public demo can never burn through the owner's free provider quota.
+DEMO_LLM_CALLS_PER_HOUR = int(os.getenv("AGENTSHIELD_DEMO_LLM_CALLS_PER_HOUR", "60"))
+
 # Only trust this many hops of X-Forwarded-For, counted from the right (closest
 # to us). 0 (default) means "trust nothing but the direct socket peer" - the
 # safe default when there's no reverse proxy in front of this process. Set to
@@ -92,6 +112,16 @@ def _load_or_create_admin_key() -> str:
     env_key = os.getenv("AGENTSHIELD_ADMIN_KEY", "")
     if env_key:
         return env_key
+    if IS_PRODUCTION:
+        # Printing a generated secret to a hosted log stream leaks it to anyone
+        # with log access (this happened: a Render build log showed the key in
+        # plain text). So in production an unset key means the admin API is
+        # simply disabled: a random value nobody is ever told.
+        logger.warning(
+            "AGENTSHIELD_ADMIN_KEY is not set: the admin API is disabled for this process. "
+            "Set it as a secret environment variable to enable admin routes."
+        )
+        return secrets.token_urlsafe(32)
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     admin_key_file = DATA_DIR / ".admin_key"
     if admin_key_file.exists():
@@ -118,6 +148,7 @@ ADMIN_KEY = _load_or_create_admin_key()
 REDIS_URL = os.getenv("REDIS_URL", "")
 _distributed_limiter = None
 _rate_limit_rule = None
+_demo_rate_limit_rule = None
 
 try:
     from limits import parse as _parse_rate_limit
@@ -125,6 +156,7 @@ try:
     from limits.strategies import MovingWindowRateLimiter
 
     _rate_limit_rule = _parse_rate_limit(f"{RATE_LIMIT_PER_MINUTE}/minute")
+    _demo_rate_limit_rule = _parse_rate_limit(f"{DEMO_RATE_LIMIT_PER_MINUTE}/minute")
     if REDIS_URL:
         _distributed_limiter = MovingWindowRateLimiter(_storage_from_string(REDIS_URL))
 except Exception as exc:  # pragma: no cover - exercised only when `limits`/redis aren't available
@@ -162,6 +194,14 @@ class RateLimiter:
 
 
 rate_limiter = RateLimiter(RATE_LIMIT_PER_MINUTE)
+# Demo keys are anonymous, so they get a much lower per-key ceiling, plus three
+# shared guards: how fast keys can be minted (globally and per client IP) and
+# how many LLM calls demo traffic may make in total. In-memory on purpose: demo
+# mode is meant for a single small instance.
+demo_rate_limiter = RateLimiter(DEMO_RATE_LIMIT_PER_MINUTE)
+demo_mint_limiter = RateLimiter(DEMO_MINT_PER_MINUTE, window_seconds=60)
+demo_mint_ip_limiter = RateLimiter(DEMO_MINT_PER_IP_PER_HOUR, window_seconds=3600)
+demo_llm_budget = RateLimiter(DEMO_LLM_CALLS_PER_HOUR, window_seconds=3600)
 
 
 def _client_ip(request: Request) -> str:
@@ -178,11 +218,14 @@ def _client_ip(request: Request) -> str:
 def check_rate_limit(request: Request, key: ApiKeyRecord):
     # Primary identity: the authenticated key. Not spoofable by header games.
     identity = f"key:{key.id}"
-    if _distributed_limiter is not None and _rate_limit_rule is not None:
-        if not _distributed_limiter.hit(_rate_limit_rule, identity):
+    is_demo = getattr(key, "kind", "standard") == "demo"
+    rule = _demo_rate_limit_rule if is_demo else _rate_limit_rule
+    if _distributed_limiter is not None and rule is not None:
+        if not _distributed_limiter.hit(rule, identity):
             raise HTTPException(429, "Rate limit exceeded. Try again shortly.")
         return
-    if not rate_limiter.allow(identity):
+    limiter = demo_rate_limiter if is_demo else rate_limiter
+    if not limiter.allow(identity):
         raise HTTPException(429, "Rate limit exceeded. Try again shortly.")
 
 
@@ -192,6 +235,13 @@ def require_admin(x_admin_key: Optional[str]):
     # key's length/prefix through response timing over many attempts.
     if not x_admin_key or not secrets.compare_digest(x_admin_key, ADMIN_KEY):
         raise HTTPException(403, "Invalid or missing admin key.")
+
+
+async def admin_guard(x_admin_key: Optional[str] = Header(None)):
+    """Admin routes declare this as a dependency, not a call inside the handler:
+    FastAPI resolves dependencies before it validates the request body, so an
+    unauthenticated caller gets a 403 and never even reaches validation."""
+    require_admin(x_admin_key)
 
 
 def _scoped_session_id(key: ApiKeyRecord, session_id: str) -> str:
@@ -367,7 +417,6 @@ async def demo_threat_generator():
                     "source": "demo"
                 }
 
-                await log_event(result_dict, scenario["text"], session_id)
                 await broadcast({"type": "threat_event", "input_preview": scenario["text"][:200], **result_dict})
 
             elif roll < 0.8:
@@ -394,7 +443,6 @@ async def demo_threat_generator():
                     "source": "demo"
                 }
 
-                await log_event(result_dict, text, session_id)
                 await broadcast({"type": "threat_event", "input_preview": text[:200], **result_dict})
 
             else:
@@ -428,6 +476,8 @@ async def _ensure_bootstrap_api_key():
     gitignored file so start.sh / the frontend can pick it up automatically."""
     if os.getenv("AGENTSHIELD_AUTO_BOOTSTRAP_KEY", "true").lower() != "true":
         return
+    if IS_PRODUCTION:
+        return  # a printed bootstrap key is a development convenience, never a production one
     if await list_api_keys():
         return
     _key_id, raw_key = await create_api_key("bootstrap")
@@ -457,6 +507,13 @@ async def lifespan(app: FastAPI):
     traffic_task = asyncio.create_task(demo_threat_generator())
     # Enforce event retention (was previously dead config - never called anywhere)
     retention_task = asyncio.create_task(retention_cleanup_worker())
+    demo_task = None
+    if PUBLIC_DEMO:
+        demo_task = asyncio.create_task(demo_cleanup_worker())
+        logger.info(
+            "Public demo mode is ON: anyone can mint a %ds demo key (max %d active, %d requests/min each).",
+            DEMO_KEY_TTL_SECONDS, DEMO_MAX_ACTIVE_KEYS, DEMO_RATE_LIMIT_PER_MINUTE,
+        )
     # Cross-worker WebSocket fanout - only meaningful (and only started) when
     # REDIS_URL is set; a single worker already delivers its own broadcasts
     # locally without this.
@@ -469,6 +526,8 @@ async def lifespan(app: FastAPI):
     task.cancel()
     traffic_task.cancel()
     retention_task.cancel()
+    if demo_task:
+        demo_task.cancel()
     if relay_task:
         relay_task.cancel()
     await close_pool()
@@ -564,7 +623,13 @@ async def add_security_headers(request: Request, call_next):
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
-    # Never leak stack traces or internals to clients
+    # Never leak stack traces or internals to the client, but DO record them:
+    # this handler used to swallow every unexpected error silently, which made
+    # a production failure impossible to diagnose from the logs.
+    logger.error(
+        "Unhandled exception on %s %s", request.method, request.url.path,
+        exc_info=(type(exc), exc, exc.__traceback__),
+    )
     return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
 
@@ -676,6 +741,23 @@ async def retention_cleanup_worker():
             await asyncio.sleep(5)
 
 
+async def demo_cleanup_worker():
+    """Removes expired demo sessions and everything they produced, so a
+    visitor's prompts do not outlive their session. Expired keys are already
+    rejected at authentication time; this is housekeeping and privacy."""
+    while True:
+        try:
+            await asyncio.sleep(300)
+            removed = await purge_expired_demo_keys()
+            if removed:
+                logger.info("Demo: removed %d expired demo session(s) and their data", removed)
+        except asyncio.CancelledError:
+            break
+        except Exception:
+            logger.exception("Demo cleanup pass failed")
+            await asyncio.sleep(5)
+
+
 # ── WebSocket tickets ─────────────────────────────────────────────────────────
 # A browser's native WebSocket API cannot set custom headers, so a long-lived
 # API key can't be attached to the handshake without sitting in the URL -
@@ -731,6 +813,42 @@ async def issue_ws_ticket(request: Request, key: ApiKeyRecord = Depends(require_
     return {"ticket": ticket, "expires_in": WS_TICKET_TTL_SECONDS}
 
 
+@app.post("/api/demo/session")
+async def create_demo_session(request: Request):
+    """Public demo mode only. Mints a private, short-lived, low-limit API key so
+    a public dashboard can work without any real secret in its JavaScript.
+    Disabled (404) unless AGENTSHIELD_PUBLIC_DEMO=true."""
+    if not PUBLIC_DEMO:
+        raise HTTPException(404, "Public demo mode is not enabled on this server.")
+    if not demo_mint_limiter.allow("global"):
+        raise HTTPException(429, "Too many demo sessions are being created. Try again in a minute.")
+    # Per-IP limiting is only trustworthy when we know how many proxies sit in
+    # front of us (AGENTSHIELD_TRUSTED_PROXY_COUNT). Without that, every visitor
+    # shares the proxy's address, so a per-IP cap would just throttle everyone.
+    if TRUSTED_PROXY_COUNT > 0 and not demo_mint_ip_limiter.allow(_client_ip(request)):
+        raise HTTPException(429, "Too many demo sessions from your network. Try again later.")
+    if await count_active_demo_keys() >= DEMO_MAX_ACTIVE_KEYS:
+        raise HTTPException(503, "The demo is at capacity. Try again in a few minutes.")
+    _key_id, raw_key = await create_api_key("public-demo", kind="demo", ttl_seconds=DEMO_KEY_TTL_SECONDS)
+    return {
+        "key": raw_key,
+        "expires_in": DEMO_KEY_TTL_SECONDS,
+        "rate_limit_per_minute": DEMO_RATE_LIMIT_PER_MINUTE,
+        "scope": "inspect, scan and analytics for this session only",
+    }
+
+
+def _effective_skip_llm(key: ApiKeyRecord, requested: bool, detector: ThreatDetector) -> bool:
+    """Demo visitors share one hourly LLM budget. Once it is spent their requests
+    still work, on the deterministic layers, instead of draining the owner's
+    free provider quota or failing."""
+    if requested:
+        return True
+    if getattr(key, "kind", "standard") == "demo" and detector.analyzer.is_llm_available:
+        return not demo_llm_budget.allow("global")
+    return False
+
+
 def _tenant_ws_connection_count(tenant_id: str) -> int:
     return sum(1 for t in ws_clients.values() if t == tenant_id)
 
@@ -769,8 +887,11 @@ async def websocket_live(websocket: WebSocket, ticket: Optional[str] = None):
 
 class InspectRequest(BaseModel):
     text: str
-    session_id: Optional[str] = None
-    agent_name: Optional[str] = "default"
+    # Bounded on purpose: both values become dictionary/Redis keys and are
+    # stored per session, and the request-size cap alone still allowed a
+    # multi-megabyte session_id. FastAPI answers an over-long value with a 422.
+    session_id: Optional[str] = Field(default=None, max_length=128)
+    agent_name: Optional[str] = Field(default="default", max_length=64)
     skip_llm: bool = False
 
 
@@ -781,7 +902,7 @@ class BatchInspectRequest(BaseModel):
 class OutputScanRequest(BaseModel):
     text: str
     redact: bool = True
-    session_id: Optional[str] = None
+    session_id: Optional[str] = Field(default=None, max_length=128)
 
 
 # ── Core endpoints ────────────────────────────────────────────────────────────
@@ -802,7 +923,7 @@ async def inspect(
     result = await detector.inspect(
         text=req.text,
         session_id=_scoped_session_id(key, session_id),
-        skip_llm=req.skip_llm,
+        skip_llm=_effective_skip_llm(key, req.skip_llm, detector),
     )
 
     result_dict = result.to_dict()
@@ -825,7 +946,7 @@ async def inspect(
 
 @app.post("/api/inspect/batch")
 async def inspect_batch(
-    req: BatchInspectRequest, request: Request,
+    req: BatchInspectRequest, background_tasks: BackgroundTasks, request: Request,
     key: ApiKeyRecord = Depends(require_api_key),
     detector: ThreatDetector = Depends(get_detector),
 ):
@@ -843,7 +964,10 @@ async def inspect_batch(
         for item in req.items
     ]
     tasks = [
-        detector.inspect(text=item.text, session_id=_scoped_session_id(key, session_id), skip_llm=item.skip_llm)
+        detector.inspect(
+            text=item.text, session_id=_scoped_session_id(key, session_id),
+            skip_llm=_effective_skip_llm(key, item.skip_llm, detector),
+        )
         for item, session_id in normalized_items
     ]
     # One failed item must not fail the whole batch
@@ -862,7 +986,16 @@ async def inspect_batch(
         d["session_id"] = session_id
         d["agent_name"] = item.agent_name
         d["timestamp"] = time.time()
+        d["source"] = "live"
         payload.append(d)
+        # Same treatment as a single /api/inspect call. Batch traffic used to
+        # be invisible: never stored, never counted in analytics, never shown
+        # on the live dashboard.
+        preview = item.text[:200].replace("\n", " ")
+        background_tasks.add_task(log_event, d, item.text, session_id, key.id)
+        background_tasks.add_task(
+            broadcast, {"type": "threat_event", "input_preview": preview, "tenant_id": key.id, **d}, key.id
+        )
     return payload
 
 
@@ -1028,6 +1161,8 @@ async def status(request: Request):
         "version": "1.0.0",
         "llm_provider": detector.analyzer.provider,
         "llm_available": detector.analyzer.is_llm_available,
+        "llm_stats": detector.analyzer.stats(),
+        "public_demo": PUBLIC_DEMO,
         "pattern_count": len(ATTACK_PATTERNS),
         "output_pattern_count": len(LEAK_PATTERNS),
         "ws_clients": len(ws_clients),
@@ -1143,23 +1278,20 @@ async def demo_attacks():
 
 # ── Admin Operations ─────────────────────────────────────────────────────────
 
-@app.post("/api/admin/clear-cache")
-async def clear_cache(x_admin_key: Optional[str] = Header(None), detector: ThreatDetector = Depends(get_detector)):
-    require_admin(x_admin_key)
+@app.post("/api/admin/clear-cache", dependencies=[Depends(admin_guard)])
+async def clear_cache(detector: ThreatDetector = Depends(get_detector)):
     await detector.analyzer.clear_cache()
     return {"status": "success", "message": "LLM Analysis cache cleared."}
 
 
-@app.post("/api/admin/reset-sessions")
-async def reset_sessions(x_admin_key: Optional[str] = Header(None), detector: ThreatDetector = Depends(get_detector)):
-    require_admin(x_admin_key)
+@app.post("/api/admin/reset-sessions", dependencies=[Depends(admin_guard)])
+async def reset_sessions(detector: ThreatDetector = Depends(get_detector)):
     await detector.session_manager.reset_all()
     return {"status": "success", "message": "All session states wiped."}
 
 
-@app.post("/api/admin/toggle-generator")
-async def toggle_generator(x_admin_key: Optional[str] = Header(None)):
-    require_admin(x_admin_key)
+@app.post("/api/admin/toggle-generator", dependencies=[Depends(admin_guard)])
+async def toggle_generator():
     admin_settings["demo_traffic_enabled"] = not admin_settings["demo_traffic_enabled"]
     return {
         "status": "success",
@@ -1168,9 +1300,8 @@ async def toggle_generator(x_admin_key: Optional[str] = Header(None)):
     }
 
 
-@app.get("/api/admin/config")
-async def get_admin_config(x_admin_key: Optional[str] = Header(None), detector: ThreatDetector = Depends(get_detector)):
-    require_admin(x_admin_key)
+@app.get("/api/admin/config", dependencies=[Depends(admin_guard)])
+async def get_admin_config(detector: ThreatDetector = Depends(get_detector)):
     session_stats = await detector.session_manager.get_all_stats()
     return {
         "demo_traffic_enabled": admin_settings["demo_traffic_enabled"],
@@ -1185,23 +1316,20 @@ class CreateApiKeyRequest(BaseModel):
     label: Optional[str] = None
 
 
-@app.post("/api/admin/keys")
-async def admin_create_key(req: CreateApiKeyRequest, x_admin_key: Optional[str] = Header(None)):
-    require_admin(x_admin_key)
+@app.post("/api/admin/keys", dependencies=[Depends(admin_guard)])
+async def admin_create_key(req: CreateApiKeyRequest):
     key_id, raw_key = await create_api_key(req.label)
     return {"id": key_id, "key": raw_key, "label": req.label,
             "warning": "This is the only time the raw key is shown. Store it now."}
 
 
-@app.get("/api/admin/keys")
-async def admin_list_keys(x_admin_key: Optional[str] = Header(None)):
-    require_admin(x_admin_key)
+@app.get("/api/admin/keys", dependencies=[Depends(admin_guard)])
+async def admin_list_keys():
     return {"keys": await list_api_keys()}
 
 
-@app.delete("/api/admin/keys/{key_id}")
-async def admin_revoke_key(key_id: str, x_admin_key: Optional[str] = Header(None)):
-    require_admin(x_admin_key)
+@app.delete("/api/admin/keys/{key_id}", dependencies=[Depends(admin_guard)])
+async def admin_revoke_key(key_id: str):
     revoked = await revoke_api_key(key_id)
     if not revoked:
         raise HTTPException(404, "Key not found")

@@ -266,7 +266,9 @@ export default function Dashboard() {
     { label: 'Allowed', value: allowed, rate: safeRate, color: '#30d158' },
   ]
 
-  const daily = (analytics?.daily_trend || []).reverse().map(d => ({
+  // [...] first: Array.reverse() mutates in place, and this runs on every render, so
+  // reversing the array held in state flipped the chart's time axis each time.
+  const daily = [...(analytics?.daily_trend || [])].reverse().map(d => ({
     date: d.date?.slice(5),
     blocked: d.blocked || 0,
     warned: d.warned || 0,

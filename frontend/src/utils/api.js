@@ -1,3 +1,4 @@
+import { useSyncExternalStore } from 'react'
 import axios from 'axios'
 
 const BASE = import.meta.env.VITE_API_URL
@@ -26,6 +27,95 @@ export const api = axios.create({
   timeout: 15000,
   headers: API_KEY ? { 'X-API-Key': API_KEY } : {},
 })
+
+// ── Public demo sessions ─────────────────────────────────────────────────────
+// With no build-time key (a public deployment), the first authenticated call
+// asks the backend for a private, short-lived demo key and keeps it in
+// sessionStorage. Nothing secret ships in the bundle, and each visitor is their
+// own tenant, so nobody sees anyone else's prompts. If the backend has demo mode
+// switched off, minting fails quietly and calls fail with 401 exactly as before.
+const DEMO_STORAGE_KEY = 'agentshield.demoSession'
+const PUBLIC_PATHS = ['/status', '/patterns', '/output/patterns', '/demo/attacks', '/demo/leaks']
+const EXPIRY_SKEW_MS = 30_000
+
+function readStoredSession() {
+  try {
+    const stored = JSON.parse(sessionStorage.getItem(DEMO_STORAGE_KEY) || 'null')
+    if (stored && stored.expiresAt > Date.now() + EXPIRY_SKEW_MS) return stored
+  } catch { /* storage unavailable or corrupt: behave as if there is no session */ }
+  return null
+}
+
+function writeStoredSession(session) {
+  try {
+    if (session) sessionStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(session))
+    else sessionStorage.removeItem(DEMO_STORAGE_KEY)
+  } catch { /* private mode: the session simply lives in memory */ }
+}
+
+let demoSession = API_KEY ? null : readStoredSession()
+let mintPromise = null
+const listeners = new Set()
+const notify = () => listeners.forEach(listener => listener())
+
+function mintDemoSession() {
+  if (mintPromise) return mintPromise // concurrent callers (and StrictMode) share one request
+  mintPromise = axios.post(`${BASE}/demo/session`, null, { timeout: 15000 })
+    .then(res => {
+      demoSession = { key: res.data.key, expiresAt: Date.now() + res.data.expires_in * 1000 }
+      writeStoredSession(demoSession)
+      notify()
+      return demoSession
+    })
+    .catch(() => null)
+    .finally(() => { mintPromise = null })
+  return mintPromise
+}
+
+async function ensureKey() {
+  if (API_KEY) return API_KEY
+  if (demoSession && demoSession.expiresAt > Date.now() + EXPIRY_SKEW_MS) return demoSession.key
+  const session = await mintDemoSession()
+  return session ? session.key : undefined
+}
+
+api.interceptors.request.use(async (config) => {
+  const isPublic = PUBLIC_PATHS.some(path => config.url === path || config.url?.startsWith(`${path}?`))
+  if (!isPublic && !config.headers['X-API-Key']) {
+    const key = await ensureKey()
+    if (key) config.headers['X-API-Key'] = key
+  }
+  return config
+})
+
+api.interceptors.response.use(
+  response => response,
+  async (error) => {
+    const { config, response } = error
+    // A demo key stops working when it expires, or when the free-tier backend
+    // restarts and its database (which held the key) is wiped. Mint a fresh one
+    // and retry the request once.
+    if (response?.status === 401 && !API_KEY && config && !config._retried && !config.headers?.['X-Admin-Key']) {
+      config._retried = true
+      demoSession = null
+      writeStoredSession(null)
+      const session = await mintDemoSession()
+      if (session) {
+        config.headers['X-API-Key'] = session.key
+        return api(config)
+      }
+    }
+    return Promise.reject(error)
+  },
+)
+
+/** True once this browser is running on a minted public-demo session. */
+export function useIsDemoSession() {
+  return useSyncExternalStore(
+    (listener) => { listeners.add(listener); return () => listeners.delete(listener) },
+    () => !API_KEY && demoSession !== null,
+  )
+}
 
 const adminHeaders = ADMIN_KEY ? { 'X-Admin-Key': ADMIN_KEY } : {}
 

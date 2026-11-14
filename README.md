@@ -1,437 +1,168 @@
 # AgentShield
 
-Microsoft Build AI 2026
+Built for Microsoft Build AI 2026 (theme: Security in the Agentic Future). Solo project by Anshul Jain, IIIT Delhi.
 
-Theme: Security in the Agentic Future
+AgentShield is a bidirectional security middleware for AI agents. It inspects a prompt before it reaches your agent, scans the agent's reply before it reaches the user, remembers each session so multi-turn attacks can be spotted, and streams every decision to a live dashboard. It is built with production practices (authentication, tenant isolation, rate limits, tests, CI, dependency audits), but it is a prototype: see "Known limitations" for what that means in practice.
 
-AgentShield is a production-ready, bidirectional security middleware that protects AI agent pipelines from prompt injection, jailbreaks, data exfiltration, identity spoofing, and adversarial manipulation in real time, with a single line of code.
+## Links
 
-It checks incoming prompts before they reach an agent, scans outgoing responses before they leave the system, and gives teams a live dashboard for understanding risk, blocks, warnings, safe traffic, and trust posture.
+- Live dashboard: https://agentshield-three.vercel.app
+- API: https://agentshield-api-658e.onrender.com (docs at `/docs`, status at `/status`)
+- Repository: https://github.com/anshul23102/agentshield
 
-## Submission Links
+The free hosting tier spins the API down when idle, so the first request after a quiet period can take 30 to 60 seconds.
 
-Live prototype: https://agentshield-three.vercel.app
+## What it does
 
-Backend service: https://agentshield-api-658e.onrender.com
+1. **Input guard.** Four layers, in the order the code runs them:
+   1. **Pattern matching.** 54 compiled signatures in 10 attack categories, run after Unicode normalization (NFKC, look-alike characters, spacing tricks). Instructions hidden in base64 or hex are decoded and re-scanned, and leetspeak such as `Ign0re` is handled.
+   2. **Keyword check.** 64 weighted keyword signals in three severity tiers.
+   3. **Behavior.** Per-session memory flags a falling trust-score streak, message bursts and oversized inputs, which is how an attack spread over several innocent-looking turns is caught.
+   4. **LLM analysis (optional).** If a provider key is configured, a model gives a semantic verdict. Its reply is validated and clamped, and if the provider fails the deterministic layers still decide.
+2. **Trust score.** Every request gets a score from 0 to 100 and a verdict: `allow` (above 60), `warn` (31 to 60) or `block` (30 or below). A critical pattern match always blocks.
+3. **Output guard.** 23 leak signatures (cloud and API keys, private keys, JWTs, card numbers with a Luhn check, Aadhaar with a Verhoeff check, IBANs with a MOD-97 check, emails, phone numbers validated by libphonenumber, connection strings) are replaced with placeholders.
+4. **Live dashboard.** Posture, block rate, trends, recent decisions, a simulator, an interactive pipeline view and a threat library.
+5. **Python SDK** that wraps an agent call in a few lines.
 
-Backend status: https://agentshield-api-658e.onrender.com/status
+## Measured detection quality
 
-Backend docs: https://agentshield-api-658e.onrender.com/docs
+The earlier version of this README claimed the pattern layers "catch 90%+ of attacks". That number had never been measured, and when it was measured it was wrong. The evaluation harness lives in `backend/evaluation/` and is reproducible:
 
-GitHub repository: https://github.com/anshul23102/agentshield
-
-## Microsoft AI Stack
-
-AgentShield uses GitHub Models through Azure AI Foundry for optional model-based threat analysis in Layer 3 of the detection pipeline. GitHub Models provides access to GPT-4o-mini within the free tier.
-
-When a `GITHUB_TOKEN` is configured, AgentShield performs deeper semantic analysis on suspicious prompts. Without the token, the system still catches **90%+ of attacks** using pattern matching alone.
-
-Component details:
-
-- Provider: Microsoft Azure AI Foundry
-- Model: GPT-4o-mini
-- Tier: Free tier
-- Integration: GitHub Models API
-- Purpose: Layer 3 semantic threat analysis
-
-## Problem
-
-Autonomous agent systems can receive hostile prompts, leak sensitive outputs, and carry risk across multi-turn sessions. A single request can attempt prompt injection, credential exfiltration, spoofing, jailbreak behavior, or context poisoning. A single response can expose secrets, financial data, network details, or private user information.
-
-AgentShield solves this by adding a guard layer around agent calls. It does not replace the agent. It wraps the agent with input inspection, output scanning, session memory, trust scoring, and live telemetry.
-
-## What It Does
-
-- Input Guard screens incoming prompts for injection, jailbreak, spoofing, exfiltration, and context poisoning attempts.
-- Output Guard scans outgoing responses for secrets, credentials, PII, financial data, network details, and prompt leaks.
-- Session tracking watches multi-turn behavior for escalating risk.
-- Trust scoring turns every request into a simple allow, warn, or block decision.
-- Live dashboard presents inspected traffic, block rate, detection rate, trust score, recent decisions, and traffic trends.
-- Simulator lets judges test risky and safe prompts without needing an external agent.
-- Python SDK shows how AgentShield can wrap existing agent calls with a small client.
-
-## How It Works
-
-1. A user prompt enters the Input Guard.
-2. Pattern signatures and semantic checks detect known attack behavior.
-3. Optional model analysis can add deeper review when a provider token is configured.
-4. Session memory adjusts risk when suspicious behavior builds over time.
-5. The trust scorer returns `allow`, `warn`, or `block`.
-6. Safe or warned prompts can continue to the agent.
-7. Agent responses pass through the Output Guard.
-8. Sensitive content is detected and redacted before the response leaves the system.
-9. Events stream to the dashboard through WebSocket updates.
-
-## Live Prototype Guide
-
-Open the live prototype:
-
-```text
-https://agentshield-three.vercel.app
+```bash
+cd backend
+python -m evaluation.evaluate                          # curated set, no network needed
+python -m evaluation.evaluate_public --split both      # public benchmark, read over HTTPS into memory
+python -m evaluation.evaluate --llm --delay 2.5        # include Layer 4 (sends prompts to your provider)
 ```
 
-Recommended judging flow:
+Deterministic layers only (layers 1 to 3), warn or block counted as detected:
 
-1. Open Dashboard to see live posture, metrics, trends, and recent decisions.
-2. Open Simulator and run a safe prompt.
-3. Run a risky prompt such as credential exfiltration or prompt override.
-4. Return to Dashboard and watch the decision stream update.
-5. Open Output Guard and test a response that contains secrets or sensitive data.
-6. Open Docs for endpoint references and SDK examples.
+| Test set | Prompts | Precision | Recall | False positive rate |
+|---|---|---|---|---|
+| Curated development set, first measurement | 177 (85 attacks) | 0.91 | 0.35 | 0.03 |
+| Curated development set, after fixes | 192 (85 attacks) | 0.94 | 0.59 | 0.03 |
+| `deepset/prompt-injections`, after fixes (not tuned on it) | 662 (263 attacks) | 1.00 | 0.06 | 0.00 |
 
-## Architecture
+With Layer 4 (Groq `openai/gpt-oss-120b`) enabled, warn or block counted as detected:
+
+| Test set | Prompts | Precision | Recall | False positive rate |
+|---|---|---|---|---|
+| Curated development set, layers 1 to 4 | 192 (85 attacks) | 0.93 | 0.99 | 0.06 |
+| `deepset/prompt-injections` test split, layers 1 to 3 | 116 (60 attacks) | 1.00 | 0.02 | 0.00 |
+| `deepset/prompt-injections` test split, layers 1 to 4 | 116 (60 attacks) | 0.96 | 0.42 | 0.02 |
+
+The curated LLM figure is optimistic because the set was written by the author. The public result is the honest one: the LLM layer lifts recall from 2% to 42% on a hard, largely German benchmark, at the cost of a little precision. A few provider calls failed per run (shown in the evaluator's failure counters) and fell back to the deterministic layers.
+
+How to read this honestly:
+
+- The signature layers are a **fast, precise filter for known attack shapes**, not a general detector. Recall is 100% on textbook styles (direct override, prompt extraction, authority spoofing) and 0% on paraphrased, non-English and plain-language harmful requests. Those need the LLM layer.
+- The curated set was written by the author, so it is a regression and development set, not an independent benchmark. The public set is the independent check, and it is deliberately hard (much of it is German and non-textbook phrasing).
+- Latency, measured on a laptop with short prompts and the LLM layer off: pattern layer about 0.09 ms, keyword check 0.03 ms, session layer 0.002 ms, full pipeline p50 0.18 ms and p99 0.33 ms.
+
+## How the pipeline is wired
 
 ```text
-Browser dashboard
-  |
-  | REST and WebSocket
-  v
-FastAPI backend
-  |
-  | Input Guard
-  | Pattern signatures
-  | Optional model review
-  | Session memory
-  | Trust scorer
-  | Output Guard
-  v
-SQLite event store and live telemetry
+Browser dashboard  <--REST + WebSocket-->  FastAPI backend
+                                              |
+        prompt -> L1 patterns -> L2 keywords -> L3 session behavior -> L4 LLM (optional) -> trust score
+        reply  -> output guard (leak signatures, checksums, redaction)
+                                              |
+                              SQLite (WAL, pooled), optional Redis
 ```
 
-## Tech Stack
+- **Storage:** SQLite through a small `aiosqlite` pool. Only a 200-character preview of each prompt is stored, and it is redacted first (regex guard plus Microsoft Presidio running spaCy `en_core_web_sm`). Request payloads are not stored.
+- **State:** sessions, the LLM cache, WebSocket tickets and live broadcasts live in process memory by default. Set `REDIS_URL` and all four move to Redis so several workers agree.
+- **Real time:** a browser cannot send headers on a WebSocket handshake, so the dashboard swaps its API key for a 60-second single-use ticket over REST and only the ticket goes in the WebSocket URL.
 
-Frontend: React, Vite, Tailwind CSS, Framer Motion, Recharts, Three.js
-
-Backend: Python, FastAPI, Uvicorn, SQLite, aiosqlite
-
-Realtime: FastAPI WebSocket
-
-Deployment: Vercel for frontend, Render for backend
-
-SDK: Python client wrapper
-
-## Local Setup
-
-Clone the repository:
+## Run it locally
 
 ```bash
 git clone https://github.com/anshul23102/agentshield.git
 cd agentshield
+chmod +x start.sh && ./start.sh
 ```
 
-Run the full local stack:
+Dashboard on http://localhost:5173, API on http://localhost:8000. On first run the backend mints a bootstrap API key and an admin key, prints them once and saves them under `backend/data/` (gitignored); `start.sh` wires the API key into the frontend. This convenience is development only: with `AGENTSHIELD_ENV=production` nothing generated is ever printed or saved.
+
+Manual setup:
 
 ```bash
-chmod +x start.sh
-./start.sh
+cd backend && python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.lock && python run_server.py      # requirements.lock is what CI and Render install
+cd ../frontend && npm install && npm run dev
 ```
 
-Local URLs:
-
-```text
-Dashboard: http://localhost:5173
-Backend: http://localhost:8000
-Backend docs: http://localhost:8000/docs
-```
-
-`start.sh` bootstraps a local API key and admin key automatically on first
-run - nothing to configure by hand for a fresh clone.
+`requirements.lock` pins the whole dependency tree. Regenerate it after editing `requirements.txt` with `uv pip compile requirements.txt -o requirements.lock --python-version 3.11`; CI fails if it drifts and runs `pip-audit` against it (currently no known vulnerabilities).
 
 ## Authentication
 
-Every inspect/scan/analytics endpoint requires an API key. On first startup
-with no keys in the database, the backend mints one, prints it once to the
-console, and saves it to `backend/data/.bootstrap_api_key` (gitignored).
-`start.sh` reads that file and wires it into the frontend automatically.
-
-To issue additional keys:
+Every inspect, scan and analytics call needs an `X-API-Key` (or `Authorization: Bearer`). Keys look like `ash_live_...`; only a peppered SHA-256 hash is stored. SHA-256 rather than bcrypt is deliberate: keys are 256-bit random tokens, not human passwords, so a slow hash would only add latency. Admin routes need a separate admin key and run the authorization check before request validation.
 
 ```bash
-cd backend
-python scripts/create_api_key.py "a label for this key"
+cd backend && python scripts/create_api_key.py "a label for this key"
 ```
 
-Revoking a key, and other admin operations (toggling demo traffic, clearing
-the LLM cache, wiping sessions) require a separate admin key, which is
-likewise auto-generated on first run if `AGENTSHIELD_ADMIN_KEY` isn't set, and
-saved to `backend/data/.admin_key`.
+### Public demo mode
 
-## Backend Setup
+A public site cannot ship a real key in its JavaScript. With `AGENTSHIELD_PUBLIC_DEMO=true`, `POST /api/demo/session` mints a private key per visitor: it expires after an hour, is limited to 30 requests a minute, and every visitor is their own tenant, so nobody sees anyone else's prompts. Minting is capped globally, the number of active demo keys is capped, and all demo visitors share one hourly budget of LLM calls so a public demo cannot drain your provider quota. When a visitor's key expires, their events are deleted. See `SECURITY.md`.
 
-```bash
-cd backend
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-python run_server.py
-```
+## Data and privacy, stated plainly
 
-`requirements.txt` pins direct dependencies, but not their own transitive
-dependencies - that's exactly what let pip silently pull an incompatible
-`websockets` version and break the live dashboard, once. `requirements.lock`
-(generated with [uv](https://docs.astral.sh/uv/)) pins the entire resolved
-tree for byte-for-byte reproducible installs; it's what `render.yaml` and CI
-actually install from. Regenerate it after changing `requirements.txt`:
+- With **no provider key**, nothing leaves your server.
+- With a **provider key** (GitHub Models, Groq or OpenRouter), every prompt of four or more words is sent to that provider for analysis. Secrets and PII that the regex guard recognizes are masked first (`AGENTSHIELD_LLM_REDACT_BEFORE_SEND`, on by default), but the rest of the prompt text is sent. Use `skip_llm` per request, or leave the key unset, to keep prompts local.
+- Stored per event: timestamp, tenant, session id, a 16-character hash of the input, the redacted 200-character preview, the verdict and score, matched pattern ids and timing. No IP address is stored.
+- Event retention defaults to 30 days (`AGENTSHIELD_EVENT_RETENTION_DAYS`).
+- All secrets live in environment variables and are excluded from git.
 
-```bash
-uv pip compile requirements.txt -o requirements.lock --python-version 3.11
-```
+## Known limitations
 
-CI fails the build if `requirements.lock` drifts from what that command
-produces, so it can't silently go stale.
+- **Detection is not general.** See the table above. Pattern layers will miss anything phrased in a way they do not know. The LLM layer helps, but a model that judges prompts can itself be attacked; the analyzer fences the text and validates the reply, which reduces but does not remove that risk.
+- **The LLM layer fails open.** If the provider is down, the deterministic layers decide alone. Failures are logged and counted in `/api/status` (`llm_stats`).
+- **The output guard matches text as written.** An agent that base64-encodes or zero-width-splits a secret before replying is not caught.
+- **Free hosting is ephemeral.** On Render's free plan the filesystem is wiped on every restart, so the database, API keys and demo sessions reset. A persistent disk needs a paid plan.
+- **SQLite serializes writes.** The pool helps connection reuse and reads, not write throughput. The migration path is Postgres.
+- **Session state under Redis is last-write-wins.** Two simultaneous requests in one session can lose an update; a Lua script or `WATCH`/`MULTI` would fix it.
+- **Docker files are untested.** `docker-compose.yml` was written without a Docker daemon to run it.
+- **Per-IP limits need a known proxy count.** Demo minting is limited globally; the per-IP limit only activates when `AGENTSHIELD_TRUSTED_PROXY_COUNT` is set.
 
-Optional environment variables:
+## API
 
 ```text
-GITHUB_TOKEN=your_token
-GROQ_API_KEY=your_token
-OPENROUTER_API_KEY=your_token
-AGENTSHIELD_ADMIN_KEY=your_own_admin_key      # auto-generated if unset
-REDIS_URL=redis://localhost:6379              # see "Running multiple workers" below; falls back to in-memory if unset
-AGENTSHIELD_DB_POOL_SIZE=5                    # see "Scaling the database" below
+GET  /api/status, /api/patterns, /api/output/patterns, /healthz   no auth
+POST /api/demo/session                    only when AGENTSHIELD_PUBLIC_DEMO=true
+POST /api/inspect, /api/inspect/batch     X-API-Key
+POST /api/scan/output                     X-API-Key
+GET  /api/analytics, /api/events/recent   X-API-Key (your own data only)
+POST /api/ws-ticket                       X-API-Key, then WS /ws/live?ticket=...
+     /api/admin/*                         X-Admin-Key
 ```
 
-AgentShield still works without provider tokens by using the local pattern database.
-
-### Running multiple workers
-
-By default, session tracking, the LLM cache, WebSocket tickets, and live
-broadcast fanout all live in plain process memory. That's correct for a
-single `uvicorn` process, but wrong the moment there's more than one: two
-workers behind a load balancer would have two disjoint views of session
-state (breaking multi-turn escalation detection for sessions that bounce
-between workers), two disjoint LLM caches, and a WebSocket client on worker B
-would never see an event broadcast because of a request that landed on
-worker A.
-
-Set `REDIS_URL` to fix this - every worker then shares the same session
-state, LLM cache, and ticket store, and broadcasts fan out to all workers via
-Redis pub/sub. Nothing else changes; this is purely additive infrastructure,
-not a hard dependency. Without it, AgentShield is correct for exactly one
-worker process.
-
-### Scaling the database
-
-Storage is SQLite via `aiosqlite`, in WAL mode, through a small connection
-pool (`AGENTSHIELD_DB_POOL_SIZE`, default 5) - connections are opened once
-and reused, instead of the previous behavior of opening and closing a raw
-connection on every single call.
-
-Be clear-eyed about what that pool does and doesn't fix. WAL mode lets
-multiple readers proceed concurrently, but SQLite still serializes writers -
-only one write transaction commits at a time, pool or no pool. The pool
-removes connection-open/PRAGMA overhead and helps concurrent-read
-throughput; it does not turn SQLite into a multi-writer database. If write
-throughput genuinely bottlenecks at the storage layer under real load, the
-correct fix is Postgres, not a bigger SQLite pool - that's a schema/driver
-migration (`database/db.py`'s queries are plain SQL, not SQLite-specific, so
-the path is mechanical: swap `aiosqlite` for `asyncpg`/`psycopg`, point
-`AGENTSHIELD_DB_PATH` at a `DATABASE_URL` instead), not something this
-project does today.
-
-### Deploying on Render's free tier: storage is not persistent
-
-Render's free web-service plan has no persistent disk - the local
-filesystem, including the SQLite database and the auto-generated
-`.admin_key`/`.bootstrap_api_key` files, is wiped on every redeploy and on
-every cold start after the free instance spins down from inactivity. This
-is a real limitation, not a configuration bug: `render.yaml` documents the
-fix (a `disk:` block) commented out, because Render only allows attaching a
-disk on the Starter plan or higher - it cannot be added while on `plan: free`.
-
-If you deploy to the free tier as-is, expect: analytics/event history reset
-periodically, and API keys silently regenerate on restart (the backend logs
-the new key each time it does - check the deploy logs, don't assume a
-stale key is still valid). Upgrading to the Starter plan and uncommenting
-the `disk:` block in `render.yaml` is what actually fixes this.
-
-## Frontend Setup
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-Required for the frontend to authenticate against the backend:
-
-```text
-VITE_API_KEY=ash_live_...     # from backend/data/.bootstrap_api_key, or scripts/create_api_key.py
-```
-
-For deployed frontend builds, also set:
-
-```text
-VITE_API_URL=https://agentshield-api-658e.onrender.com
-```
-
-## API Highlights
-
-```text
-GET  /api/status                 (no auth)
-GET  /api/patterns                (no auth)
-GET  /api/output/patterns         (no auth)
-GET  /api/analytics               requires X-API-Key
-GET  /api/events/recent           requires X-API-Key
-POST /api/inspect                 requires X-API-Key
-POST /api/inspect/batch           requires X-API-Key
-POST /api/scan/output             requires X-API-Key
-POST /api/ws-ticket                requires X-API-Key, mints a short-lived WS ticket
-WS   /ws/live?ticket=...           requires a valid ticket from /api/ws-ticket
-```
-
-## SDK Example
+## SDK
 
 ```python
 from agentshield_sdk import AgentShield
 
-# Requires an API key: python backend/scripts/create_api_key.py "label"
-shield = AgentShield(api_key="ash_live_...")
+shield = AgentShield(api_key="ash_live_...")          # fail_open=False by default
 
 result = shield.inspect(user_input)
-if result.is_safe:
-    response = agent.run(user_input)
-else:
-    response = f"Blocked: {result.reasoning}"
-
-scan = shield.scan_output(response)
-safe_response = scan.redacted_text
+response = agent.run(user_input) if result.is_safe else f"Blocked: {result.reasoning}"
+safe_response = shield.scan_output(response).redacted_text
 ```
 
-## Project Structure
+By default an outage raises an exception so an agent never runs on an uninspected prompt by accident. `fail_open=True` returns an `allow` flagged `degraded=True` instead: more available, but attacks pass during an outage.
 
-```text
-agentshield/
-  backend/
-    main.py
-    run_server.py
-    database/
-    shield/
-  frontend/
-    src/
-      components/
-      hooks/
-      pages/
-      utils/
-  sdk/
-    agentshield_sdk/
-  render.yaml
-  start.sh
-```
+## Tests and CI
 
-## Deployment Notes
+312 backend tests and 16 SDK tests; backend coverage including `main.py` is 88%. They include a ReDoS suite that fuzzes every detection pattern, tenant-isolation tests on the live WebSocket route, and regression tests for each bug found in the audits. CI runs the tests, a lockfile freshness check, `pip-audit`, `npm audit` and the frontend build.
 
-Render backend:
+## Stack
 
-```text
-Root directory: backend
-Build command: pip install -r requirements.txt
-Start command: python run_server.py
-Python version: 3.11.11
-```
+React 18, Vite, Tailwind, Framer Motion, Recharts; Python 3.11, FastAPI, Uvicorn, aiosqlite, Pydantic, Presidio and spaCy, phonenumbers, confusable-homoglyphs, `limits` and Redis (optional); Vercel for the frontend and Render for the API.
 
-Vercel frontend:
+## Development disclosure
 
-```text
-Root directory: frontend
-Framework: Vite
-Build command: npm run build
-Output directory: dist
-Environment variable: VITE_API_URL=https://agentshield-api-658e.onrender.com
-```
+AI tools were used while building this: GitHub Copilot, OpenAI Codex and Claude. They helped with code suggestions, debugging, refactoring, documentation and deployment troubleshooting. Product scope, the threat model, testing and final review were done by the author, and the measurements above were run rather than assumed.
 
-## Data Privacy and Security
+## License and contact
 
-**What Data Is Used:**
-- Synthetic demo prompts (no real user data required)
-- Request metadata (timestamp, IP hash, decision verdict)
-- Event logs (block/warn/allow verdicts, pattern matches)
-- Secret-looking values shown in demos are synthetic fixtures only.
-
-**How It Is Stored:**
-- Local SQLite database in `backend/data/`
-- All sensitive values kept in environment variables (never in version control)
-- Input previews truncated to first 200 characters before storage, and scanned by the redaction pipeline before that (see "Input-log redaction" above) - never the raw prompt
-- Secrets (API keys, tokens, credentials) excluded from all logs
-
-**How It Is Protected:**
-- Output Guard redacts detected secrets before transmission
-- Request payloads are not persisted
-- PII detection and masking on output responses
-- No third-party data transmission
-- All data isolated locally or in private database
-- Request size limits, session retention, bounded concurrency
-
-**Compliance Position:**
-- No personal data is required for the demo.
-- Synthetic demo prompts are used for judging and testing.
-- No confidential employer data or proprietary third-party data is required.
-- Public repository secrets are excluded through `.gitignore` and environment variable usage.
-
-## Open Source Credits
-
-This project uses the following open-source libraries:
-
-**Frontend:**
-- [React 18](https://react.dev) (MIT)
-- [Vite](https://vitejs.dev) (MIT)
-- [Tailwind CSS](https://tailwindcss.com) (MIT)
-- [Framer Motion](https://www.framer.com/motion/) (MIT)
-- [Recharts](https://recharts.org) (Apache 2.0)
-- [Three.js](https://threejs.org) (MIT)
-- [Lucide Icons](https://lucide.dev) (ISC)
-- [Axios](https://axios-http.com) (MIT)
-- [React Router](https://reactrouter.com) (MIT)
-
-**Backend:**
-- [FastAPI](https://fastapi.tiangolo.com) (MIT)
-- [Uvicorn](https://www.uvicorn.org) (BSD)
-- [SQLite](https://www.sqlite.org) (Public Domain)
-- [aiosqlite](https://github.com/omnilib/aiosqlite) (MIT)
-- [Pydantic](https://docs.pydantic.dev) (MIT)
-- [Python-dotenv](https://github.com/theskumar/python-dotenv) (BSD)
-
-**Deployment:**
-- [Vercel](https://vercel.com) (proprietary)
-- [Render](https://render.com) (proprietary)
-
-## Development Disclosure
-
-AI-powered development tools were used during the build process. Assistance was used for code suggestions, debugging, refactoring, documentation drafting, and deployment troubleshooting.
-
-Tools used:
-
-- GitHub Copilot for coding suggestions and editing support.
-- OpenAI Codex for implementation support, debugging, documentation, and deployment guidance.
-- Claude AI (Anthropic) for architecture review, backend implementation, output guard pattern design, README drafting, and deployment troubleshooting.
-
-Areas where AI assistance was used:
-
-- Architecture review for the bidirectional guard pipeline.
-- Backend implementation support for FastAPI routes, WebSocket streaming, and SQLite event storage.
-- Frontend implementation support for React pages, dashboard visualizations, and interaction refinements.
-- Detection pattern review for input attacks and output leak signatures.
-- README drafting and submission documentation.
-- Render and Vercel deployment troubleshooting.
-
-Human judgment and engineering decisions were applied throughout the project, including product scope, threat model choices, UI direction, deployment decisions, testing, and final review.
-
-All generated or assisted code was reviewed, edited, and integrated specifically for this project. No external project code was copied without attribution.
-
-## License
-
-MIT - see [LICENSE](LICENSE).
-
-## Team
-
-Team name: BloodWyrm
-
-Anshul Jain
-
-Solo participant
-
-IIIT Delhi
-
-Full-stack developer and AI security researcher
-
-Microsoft Build AI 2026
+MIT, see [LICENSE](LICENSE). Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
