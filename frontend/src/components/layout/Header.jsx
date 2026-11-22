@@ -1,7 +1,20 @@
-import { motion } from 'framer-motion'
+import { useEffect, useState } from 'react'
 import { Wifi, WifiOff } from 'lucide-react'
 
+// The free hosting tier sleeps when idle, so the first connection can take up to
+// a minute. Show a waiting state for that long before calling it a disconnect.
+const WAKE_GRACE_MS = 75000
+
 export default function Header({ title, subtitle, wsConnected, right }) {
+  const [waking, setWaking] = useState(true)
+  useEffect(() => {
+    if (wsConnected) { setWaking(false); return }
+    const t = setTimeout(() => setWaking(false), WAKE_GRACE_MS)
+    return () => clearTimeout(t)
+  }, [wsConnected])
+  const connecting = !wsConnected && waking
+  const tone = wsConnected ? '52, 199, 89' : connecting ? '255, 159, 10' : '255, 59, 48'
+  const hex = wsConnected ? '#34c759' : connecting ? '#ff9f0a' : '#ff3b30'
   return (
     <div
       className="glass-bar flex items-center justify-between px-9 py-6"
@@ -27,23 +40,24 @@ export default function Header({ title, subtitle, wsConnected, right }) {
         {right}
         {wsConnected !== undefined && (
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg"
+             title={connecting ? 'Waking up the server. This can take up to a minute on the free tier.' : undefined}
              style={{
-               background: wsConnected ? 'linear-gradient(145deg, rgba(52, 199, 89, 0.14), rgba(52, 199, 89, 0.05))' : 'linear-gradient(145deg, rgba(255, 59, 48, 0.14), rgba(255, 59, 48, 0.05))',
-               border: `1px solid ${wsConnected ? 'rgba(52, 199, 89, 0.15)' : 'rgba(255, 59, 48, 0.15)'}`,
-               boxShadow: wsConnected ? '0 2px 8px rgba(52, 199, 89, 0.05)' : '0 2px 8px rgba(255, 59, 48, 0.05)',
+               background: `linear-gradient(145deg, rgba(${tone}, 0.14), rgba(${tone}, 0.05))`,
+               border: `1px solid rgba(${tone}, 0.15)`,
+               boxShadow: `0 2px 8px rgba(${tone}, 0.05)`,
                backdropFilter: 'blur(18px) saturate(150%)',
              }}>
             {wsConnected
               ? <Wifi size={11} color="#34c759" />
-              : <WifiOff size={11} color="#ff3b30" />}
+              : <WifiOff size={11} color={hex} />}
             <span style={{
               fontSize: 10,
               fontFamily: '"Plus Jakarta Sans", sans-serif',
               fontWeight: 600,
-              color: wsConnected ? '#34c759' : '#ff3b30',
+              color: hex,
               letterSpacing: '0.06em'
             }}>
-              {wsConnected ? 'LIVE' : 'DISCONNECTED'}
+              {wsConnected ? 'LIVE' : connecting ? 'WAKING UP THE SERVER' : 'DISCONNECTED'}
             </span>
           </div>
         )}
