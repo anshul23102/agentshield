@@ -7,14 +7,31 @@ import InteractiveBackground from './components/ui/InteractiveBackground'
 import ParticleBackground from './components/ui/ParticleBackground'
 import ErrorFallback from './components/ui/ErrorFallback'
 
-const Landing     = lazy(() => import('./pages/Landing'))
-const Dashboard   = lazy(() => import('./pages/Dashboard'))
-const Simulator   = lazy(() => import('./pages/Simulator'))
-const OutputGuard = lazy(() => import('./pages/OutputGuard'))
-const Intelligence= lazy(() => import('./pages/Intelligence'))
-const Analytics   = lazy(() => import('./pages/Analytics'))
-const Docs        = lazy(() => import('./pages/Docs'))
-const Pipeline    = lazy(() => import('./pages/Pipeline'))
+// After a new deploy the hashed chunk files of the old build disappear, so a tab
+// still running the old build fails to load a page. Reload once to pick up the
+// new build; the sessionStorage flag prevents a reload loop if the failure is real.
+function lazyWithReload(factory) {
+  return lazy(() => factory().catch((err) => {
+    let already = false
+    try { already = sessionStorage.getItem('chunk-reload') === '1' } catch {}
+    if (!already) {
+      try { sessionStorage.setItem('chunk-reload', '1') } catch {}
+      window.location.reload()
+      return new Promise(() => {})
+    }
+    try { sessionStorage.removeItem('chunk-reload') } catch {}
+    throw err
+  }))
+}
+
+const Landing     = lazyWithReload(() => import('./pages/Landing'))
+const Dashboard   = lazyWithReload(() => import('./pages/Dashboard'))
+const Simulator   = lazyWithReload(() => import('./pages/Simulator'))
+const OutputGuard = lazyWithReload(() => import('./pages/OutputGuard'))
+const Intelligence= lazyWithReload(() => import('./pages/Intelligence'))
+const Analytics   = lazyWithReload(() => import('./pages/Analytics'))
+const Docs        = lazyWithReload(() => import('./pages/Docs'))
+const Pipeline    = lazyWithReload(() => import('./pages/Pipeline'))
 
 
 function Loader() {
